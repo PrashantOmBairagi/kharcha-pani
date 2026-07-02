@@ -40,7 +40,7 @@ public class ExpenseController {
         Pageable pageable = PageRequest.of(pageNo - 1, pageSize);
         User currentUser = authService.getCurrentUser();
 
-        Page<Expense> page = (Page<Expense>) expenseService.findAllExpenses(pageable, currentUser);
+        Page<Expense> page = expenseService.findAllExpenses(pageable, currentUser);
 
         List<ExpenseResponse> expenses = page.getContent()
                 .stream()
