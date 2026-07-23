@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.prashant</groupId>
-	<artifactId>smart-Finance-Tracker-App</artifactId>
+	<artifactId>kharcha-pani-application</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name/>
 	<description/>

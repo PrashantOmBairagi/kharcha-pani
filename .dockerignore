@@ -1,0 +1,25 @@
+# Maven build output — already compiled in Docker, don't send to build context
+target/
+
+# Git history — not needed inside the image
+.git/
+.gitattributes
+.gitignore
+
+# IDE folders
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Docs — not needed in the image
+*.md
+HELP.md
+
+# Maven wrapper JAR — mvnw script downloads it automatically
+.mvn/wrapper/maven-wrapper.jar
