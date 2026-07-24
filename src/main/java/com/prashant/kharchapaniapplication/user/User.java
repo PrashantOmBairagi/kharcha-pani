@@ -2,6 +2,7 @@ package com.prashant.kharchapaniapplication.user;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.prashant.kharchapaniapplication.expense.Expense;
+import com.prashant.kharchapaniapplication.financialmonth.FinancialMonth;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -9,6 +10,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -55,7 +57,7 @@ public class User implements UserDetails {
     private String phone;
 
     @Column(nullable =true, precision = 19, scale = 2)
-    private Long budget;
+    private BigDecimal budget;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
@@ -69,7 +71,7 @@ public class User implements UserDetails {
             orphanRemoval = true
     )
     @JsonIgnore
-    private List<Expense> expenses = new ArrayList<>();
+    private List<FinancialMonth> financialMonths = new ArrayList<>();
 
     //overridden methods of implemented class userDetail
     @Override

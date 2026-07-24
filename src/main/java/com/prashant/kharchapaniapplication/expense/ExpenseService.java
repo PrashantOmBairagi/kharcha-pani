@@ -9,6 +9,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
 public class ExpenseService {
@@ -25,7 +27,7 @@ public class ExpenseService {
         expenseRepository.save(expense);
     }
 
-    public void updateExpense(Long expenseId, ExpenseUpdateRequest request, User currentUser) {
+    public void updateExpense(UUID expenseId, ExpenseUpdateRequest request, User currentUser) {
         Expense expense = findExpenseById(expenseId, currentUser);
         expense.setCategory(request.getCategory());
         expense.setAmount(request.getAmount());
@@ -38,7 +40,7 @@ public class ExpenseService {
         return expenseRepository.findByUserId(currentUser.getId(),pageable);
     }
 
-    public ResponseEntity<String> deleteExpenseById(Long id, User currentUser) {
+    public ResponseEntity<String> deleteExpenseById(UUID id, User currentUser) {
             Expense expense =
                     expenseRepository
                         .findByIdAndUserId(
@@ -53,7 +55,7 @@ public class ExpenseService {
         expenseRepository.delete(expense);
         return new ResponseEntity<>("Expense deleted", HttpStatus.OK);
     }
-    public Expense findExpenseById(Long id, User currentUser) {
+    public Expense findExpenseById(UUID id, User currentUser) {
         return expenseRepository
                 .findByIdAndUserId(
                         id,

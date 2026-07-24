@@ -16,7 +16,7 @@ import java.util.UUID;
 @AllArgsConstructor
 public class ExpenseResponse {
 
-        private Long id;
+        private UUID id;
         private String description;
         private BigDecimal amount;
         private ExpenseCategory category;

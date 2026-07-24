@@ -10,5 +10,5 @@ import java.util.UUID;
 @Repository
 public interface ExpenseRepository extends JpaRepository<Expense,Long> {
     public Page<Expense> findByUserId(UUID id, Pageable pageable);
-    public Optional<Expense> findByIdAndUserId(Long id, UUID userId);
+    public Optional<Expense> findByIdAndUserId(UUID id, UUID userId);
 }

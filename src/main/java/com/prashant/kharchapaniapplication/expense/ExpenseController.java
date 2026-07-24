@@ -14,6 +14,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @Validated
 @RestController
@@ -64,7 +65,7 @@ public class ExpenseController {
     }
 
     @GetMapping("/{id}")
-    public ExpenseResponse getExpenseById(@NotNull @PathVariable long id)
+    public ExpenseResponse getExpenseById(@NotNull @PathVariable UUID id)
     {
         User currentUser = authService.getCurrentUser();
         Expense expense = expenseService.findExpenseById(id,currentUser);
@@ -77,14 +78,14 @@ public class ExpenseController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateExpense(@NotNull @PathVariable Long id , @Valid @RequestBody ExpenseUpdateRequest request){
+    public ResponseEntity<?> updateExpense(@NotNull @PathVariable UUID id , @Valid @RequestBody ExpenseUpdateRequest request){
         User currentUser = authService.getCurrentUser();
         expenseService.updateExpense(id,request,currentUser);
         return new ResponseEntity<>("Expense Updated Successfully",HttpStatus.OK);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<String> deleteExpenseById(@NotNull @PathVariable Long id) {
+    public ResponseEntity<String> deleteExpenseById(@NotNull @PathVariable UUID id) {
         User currentUser = authService.getCurrentUser();
         return expenseService.deleteExpenseById(id,currentUser);
     }
