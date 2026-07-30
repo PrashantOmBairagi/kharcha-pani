@@ -1,5 +1,6 @@
 package com.prashant.kharchapaniapplication.expense;
 import com.prashant.kharchapaniapplication.enums.ExpenseCategory;
+import com.prashant.kharchapaniapplication.financialmonth.FinancialMonth;
 import com.prashant.kharchapaniapplication.user.User;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.PastOrPresent;
@@ -25,6 +26,10 @@ public class Expense {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(nullable = false, name = "user_id")
     private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "financialMonth", nullable = false)
+    private FinancialMonth financialMonth;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

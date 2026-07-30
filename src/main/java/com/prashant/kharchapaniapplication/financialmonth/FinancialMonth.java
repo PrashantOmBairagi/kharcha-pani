@@ -31,24 +31,20 @@ public class FinancialMonth {
     private UUID id;
 
     @Column(nullable = false)
-    @NotNull
-    @Min(2000)
-    @Max(2050)
     private Integer year;
 
     @Column(nullable = false)
-    @NotNull
-    @Min(1)
-    @Max(12)
     private Integer month;
 
-    @NotNull
-    @PositiveOrZero
+    @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal budget;
+
+    @Column(nullable = false, precision = 20, scale = 2)
+    private BigDecimal monthlyIncome;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    private User userId;
+    private User user;
 
     @OneToMany(
             mappedBy = "financialMonth",

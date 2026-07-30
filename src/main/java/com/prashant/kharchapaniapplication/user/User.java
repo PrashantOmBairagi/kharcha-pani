@@ -57,7 +57,7 @@ public class User implements UserDetails {
     private String phone;
 
     @Column(nullable =true, precision = 19, scale = 2)
-    private BigDecimal budget;
+    private Long budget;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
