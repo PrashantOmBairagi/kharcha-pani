@@ -2,9 +2,24 @@
 
 > A production-style multi-user personal finance backend built with **Java, Spring Boot, Spring Security, JWT Authentication, JPA/Hibernate, MySQL, Docker, and REST APIs**, powering the **Kharcha Pani Android application**.
 
-<p align="center">
+
+<table align="left-centre">
+<tr>
+
+<td>
+    <p align="center">
   <img src="screenshots/poster-banner.png" />
 </p>
+<a href="https://github.com/PrashantOmBairagi/kharcha-pani/releases/latest">
+<img src="https://img.shields.io/badge/⬇%20Download%20APK-FF6B35?style=for-the-badge&logo=android&logoColor=white" />
+ 
+</a>
+       <--- Click to download !!
+</td>
+ 
+</tr>
+</table>
+
 
 ---
 
