@@ -1,9 +1,9 @@
-# 💸 Kharcha Pani — Personal Finance Backend
+# 💸 Kharcha Pani — Personal Finance Application
 
 > A production-style multi-user personal finance backend built with **Java, Spring Boot, Spring Security, JWT Authentication, JPA/Hibernate, MySQL, Docker, and REST APIs**, powering the **Kharcha Pani Android application**.
 
 
-<table align="left-centre">
+<table >
 <tr>
 
 <td>
