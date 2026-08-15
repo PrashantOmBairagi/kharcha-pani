@@ -5,6 +5,7 @@ import com.prashant.kharchapaniapplication.user.User;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Positive;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -17,7 +18,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
-@Setter
+@Setter(AccessLevel.PROTECTED)
 @Entity
 @Table(name = "expenses")
 @NoArgsConstructor

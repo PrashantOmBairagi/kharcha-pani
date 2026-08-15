@@ -1,7 +1,7 @@
 # 💸 Smart Finance Tracker
 
 > A production-style personal finance backend built with **Java, Spring Boot, Spring Security, JWT Authentication, MySQL, Docker, and REST APIs**, powering the Android application **Kharcha Pani**.
-
+<p align="center"> <img src="screenshots/poster-banner.png" /> </p>
 ---
 ## Screenshots
 
