@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -35,12 +36,19 @@ public class ExpenseController {
     @GetMapping
     public ExpensePageResponse getAllExpenses(
             @RequestParam(defaultValue = "1") Integer pageNo,
-            @RequestParam(defaultValue = "10") Integer pageSize
-    ){
-        Pageable pageable = PageRequest.of(pageNo - 1, pageSize);
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(defaultValue = "expenseDate") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir,
+            @RequestParam(required = false) UUID financialMonthId
+    ) {
+        List<String> allowedSortFields = List.of("expenseDate", "amount", "category", "createdAt", "updatedAt");
+        String safeSortBy = allowedSortFields.contains(sortBy) ? sortBy : "expenseDate";
+        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
+
+        Pageable pageable = PageRequest.of(pageNo - 1, Math.min(pageSize, 50), Sort.by(direction, safeSortBy));
         User currentUser = authService.getCurrentUser();
 
-        Page<Expense> page = expenseService.findAllExpenses(pageable, currentUser);
+        Page<Expense> page = expenseService.findAllExpenses(pageable, currentUser, financialMonthId);
 
         List<ExpenseResponse> expenses = page.getContent()
                 .stream()

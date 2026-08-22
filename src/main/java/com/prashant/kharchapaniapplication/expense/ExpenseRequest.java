@@ -8,6 +8,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.UUID;
 
 @AllArgsConstructor
 @Getter
@@ -27,4 +28,6 @@ public class ExpenseRequest {
     @NotNull(message = "Expense date is required.")
     @PastOrPresent(message = "Expense cannot have future date.")
     private LocalDate expenseDate;
+
+    private UUID financialMonthId;
 }

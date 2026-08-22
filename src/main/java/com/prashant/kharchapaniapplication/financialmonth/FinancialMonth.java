@@ -47,6 +47,7 @@ public class FinancialMonth {
     private User user;
 
     @OneToMany(
+            fetch = FetchType.LAZY,
             mappedBy = "financialMonth",
             cascade = CascadeType.ALL,
             orphanRemoval = true

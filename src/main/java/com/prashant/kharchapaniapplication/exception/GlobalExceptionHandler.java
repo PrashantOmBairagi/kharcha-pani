@@ -22,6 +22,14 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(error,HttpStatus.NOT_FOUND);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String,Object>> handleIllegalArgumentException(IllegalArgumentException e) {
+        Map<String,Object> error = new HashMap <>();
+        error.put(MSG, e.getMessage());
+        error.put(STATUS, HttpStatus.CONFLICT.value());
+        return new ResponseEntity<>(error, HttpStatus.CONFLICT);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String,Object>> methodArgumentNotValidException(MethodArgumentNotValidException e) {
         Map<String,Object> error = new HashMap <>();

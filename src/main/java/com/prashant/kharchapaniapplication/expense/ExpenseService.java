@@ -1,6 +1,8 @@
 package com.prashant.kharchapaniapplication.expense;
 
 import com.prashant.kharchapaniapplication.exception.ResourceNotFoundException;
+import com.prashant.kharchapaniapplication.financialmonth.FinancialMonth;
+import com.prashant.kharchapaniapplication.financialmonth.FinancialMonthService;
 import com.prashant.kharchapaniapplication.user.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -9,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Service
@@ -16,15 +19,27 @@ import java.util.UUID;
 public class ExpenseService {
 
     private final ExpenseRepository expenseRepository;
+    private final FinancialMonthService financialMonthService;
 
-    public void createExpense(ExpenseRequest request , User currentUser) {
+    public void createExpense(ExpenseRequest request, User currentUser) {
         Expense expense = new Expense();
         expense.setCategory(request.getCategory());
         expense.setDescription(request.getDescription());
         expense.setAmount(request.getAmount());
         expense.setExpenseDate(request.getExpenseDate());
         expense.setUser(currentUser);
+
+        FinancialMonth financialMonth = resolveFinancialMonth(request, currentUser);
+        expense.setFinancialMonth(financialMonth);
+
         expenseRepository.save(expense);
+    }
+
+    private FinancialMonth resolveFinancialMonth(ExpenseRequest request, User currentUser) {
+        if (request.getFinancialMonthId() != null) {
+            return financialMonthService.getFinancialMonthByIdAndUser(request.getFinancialMonthId(), currentUser);
+        }
+        return financialMonthService.getOrCreateCurrentMonth(currentUser);
     }
 
     public void updateExpense(UUID expenseId, ExpenseUpdateRequest request, User currentUser) {
@@ -36,8 +51,15 @@ public class ExpenseService {
         expenseRepository.save(expense);
     }
 
-    public Page findAllExpenses(Pageable pageable, User currentUser) {
-        return expenseRepository.findByUserId(currentUser.getId(),pageable);
+    public Page<Expense> findAllExpenses(Pageable pageable, User currentUser) {
+        return expenseRepository.findByUserId(currentUser.getId(), pageable);
+    }
+
+    public Page<Expense> findAllExpenses(Pageable pageable, User currentUser, UUID financialMonthId) {
+        if (financialMonthId != null) {
+            return expenseRepository.findByUserIdAndFinancialMonthId(currentUser.getId(), financialMonthId, pageable);
+        }
+        return expenseRepository.findByUserId(currentUser.getId(), pageable);
     }
 
     public ResponseEntity<String> deleteExpenseById(UUID id, User currentUser) {

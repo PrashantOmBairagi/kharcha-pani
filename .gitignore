@@ -68,3 +68,6 @@ application-prod.properties
 # OS files
 .DS_Store
 Thumbs.db
+
+# AI Memory
+.ai-memory/

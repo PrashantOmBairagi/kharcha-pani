@@ -73,7 +73,7 @@ public class User implements UserDetails {
     @JsonIgnore
     private List<FinancialMonth> financialMonths = new ArrayList<>();
 
-    //overridden methods of implemented class userDetail
+    //overridden methods of implemented class - userDetail (they are at default currently)
     @Override
     @JsonIgnore
     public Collection<? extends GrantedAuthority> getAuthorities() {
