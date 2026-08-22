@@ -1,5 +1,7 @@
 # Maven build output — already compiled in Docker, don't send to build context
 target/
+# screenshots are only for readme file.
+screenshots/
 
 # Git history — not needed inside the image
 .git/
