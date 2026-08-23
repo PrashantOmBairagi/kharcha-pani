@@ -1,5 +1,7 @@
 package com.prashant.kharchapaniapplication.financialmonth;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -12,6 +14,8 @@ import java.util.UUID;
 public interface FinancialMonthRepository extends JpaRepository<FinancialMonth, UUID> {
 
     Optional<FinancialMonth> findByUserIdAndYearAndMonth(UUID userId, int year, int month);
+
+    Page<FinancialMonth> findByUserId(UUID userId, Pageable pageable);
 
     List<FinancialMonth> findByUserIdOrderByYearDescMonthDesc(UUID userId);
 

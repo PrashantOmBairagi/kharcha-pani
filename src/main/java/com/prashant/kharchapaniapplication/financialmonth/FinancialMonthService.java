@@ -1,13 +1,29 @@
 package com.prashant.kharchapaniapplication.financialmonth;
 
 import com.prashant.kharchapaniapplication.auth.AuthService;
+import com.prashant.kharchapaniapplication.enums.ExpenseCategory;
+import com.prashant.kharchapaniapplication.exception.ResourceNotFoundException;
+import com.prashant.kharchapaniapplication.expense.Expense;
+import com.prashant.kharchapaniapplication.expense.ExpenseResponse;
 import com.prashant.kharchapaniapplication.user.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -78,5 +94,141 @@ public class FinancialMonthService {
 
     public FinancialMonth save(FinancialMonth financialMonth) {
         return financialMonthRepository.save(financialMonth);
+    }
+
+    @Transactional(readOnly = true)
+    public FinancialMonthSummaryResponse getSummary(UUID fMonthId) {
+        User currentUser = authService.getCurrentUser();
+        FinancialMonth financialMonth = getFinancialMonthByIdAndUser(fMonthId, currentUser);
+        return buildSummary(financialMonth);
+    }
+
+    @Transactional(readOnly = true)
+    public FinancialMonthDetailResponse getDetail(UUID fMonthId, Pageable pageable) {
+        User currentUser = authService.getCurrentUser();
+        FinancialMonth financialMonth = getFinancialMonthByIdAndUser(fMonthId, currentUser);
+
+        return new FinancialMonthDetailResponse(
+                buildSummary(financialMonth),
+                buildCategoryBreakdown(financialMonth),
+                buildDailyTrend(financialMonth),
+                buildRecentExpenses(financialMonth, pageable.getPageSize())
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public FinancialMonthSummaryResponse getCurrentMonthSummary(User user) {
+        LocalDate now = LocalDate.now();
+        return financialMonthRepository.findByUserIdAndYearAndMonth(user.getId(), now.getYear(), now.getMonthValue())
+                .map(this::buildSummary)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Financial month not found for " + now.getYear() + "-" + now.getMonthValue()));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<FinancialMonthSummaryResponse> getAllMonthsSummary(User user, Pageable pageable) {
+        Pageable effectivePageable = pageable.getSort().isSorted()
+                ? pageable
+                : PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                        Sort.by(Sort.Direction.DESC, "year", "month"));
+
+        return financialMonthRepository.findByUserId(user.getId(), effectivePageable)
+                .map(this::buildSummary);
+    }
+
+    private FinancialMonthSummaryResponse buildSummary(FinancialMonth financialMonth) {
+        List<Expense> expenses = financialMonth.getExpenses();
+
+        BigDecimal totalSpent = expenses.stream()
+                .map(Expense::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        LocalDate lastExpenseDate = expenses.stream()
+                .map(Expense::getExpenseDate)
+                .max(LocalDate::compareTo)
+                .orElse(null);
+
+        return new FinancialMonthSummaryResponse(
+                financialMonth.getId(),
+                financialMonth.getYear(),
+                financialMonth.getMonth(),
+                financialMonth.getBudget(),
+                financialMonth.getMonthlyIncome(),
+                totalSpent,
+                financialMonth.getBudget().subtract(totalSpent),
+                expenses.size(),
+                lastExpenseDate
+        );
+    }
+
+    private List<CategoryBreakdownResponse> buildCategoryBreakdown(FinancialMonth financialMonth) {
+        List<Expense> expenses = financialMonth.getExpenses();
+
+        Map<ExpenseCategory, BigDecimal> totalsByCategory = expenses.stream()
+                .collect(Collectors.groupingBy(
+                        Expense::getCategory,
+                        Collectors.reducing(BigDecimal.ZERO, Expense::getAmount, BigDecimal::add)
+                ));
+
+        BigDecimal totalSpent = expenses.stream()
+                .map(Expense::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return totalsByCategory.entrySet().stream()
+                .sorted(Map.Entry.<ExpenseCategory, BigDecimal>comparingByValue().reversed())
+                .map(entry -> new CategoryBreakdownResponse(
+                        entry.getKey(),
+                        entry.getValue(),
+                        calculatePercentage(entry.getValue(), totalSpent)
+                ))
+                .toList();
+    }
+
+    private List<DailyTrendResponse> buildDailyTrend(FinancialMonth financialMonth) {
+        YearMonth yearMonth = YearMonth.of(financialMonth.getYear(), financialMonth.getMonth());
+
+        Map<LocalDate, BigDecimal> totalsByDay = financialMonth.getExpenses().stream()
+                .collect(Collectors.groupingBy(
+                        Expense::getExpenseDate,
+                        Collectors.reducing(BigDecimal.ZERO, Expense::getAmount, BigDecimal::add)
+                ));
+
+        LocalDate start = yearMonth.atDay(1);
+        LocalDate end = yearMonth.atEndOfMonth();
+        if (yearMonth.equals(YearMonth.from(LocalDate.now()))) {
+            end = LocalDate.now();
+        }
+
+        List<DailyTrendResponse> trend = new ArrayList<>();
+        for (LocalDate day = start; !day.isAfter(end); day = day.plusDays(1)) {
+            trend.add(new DailyTrendResponse(day, totalsByDay.getOrDefault(day, BigDecimal.ZERO)));
+        }
+        return trend;
+    }
+
+    private List<ExpenseResponse> buildRecentExpenses(FinancialMonth financialMonth, int limit) {
+        return financialMonth.getExpenses().stream()
+                .sorted(Comparator.comparing(Expense::getExpenseDate, Comparator.reverseOrder())
+                        .thenComparing(Expense::getCreatedAt, Comparator.reverseOrder()))
+                .limit(limit)
+                .map(expense -> new ExpenseResponse(
+                        expense.getId(),
+                        expense.getDescription(),
+                        expense.getAmount(),
+                        expense.getCategory(),
+                        expense.getExpenseDate(),
+                        expense.getUser().getId()
+                ))
+                .toList();
+    }
+
+    private Double calculatePercentage(BigDecimal categoryTotal, BigDecimal totalSpent) {
+        if (totalSpent.signum() == 0) {
+            return 0.0;
+        }
+        return categoryTotal
+                .multiply(BigDecimal.valueOf(100))
+                .divide(totalSpent, 1, RoundingMode.HALF_UP)
+                .doubleValue();
     }
 }

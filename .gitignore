@@ -71,3 +71,6 @@ Thumbs.db
 
 # AI Memory
 .ai-memory/
+
+# Agent instructions (local-only by owner choice)
+AGENTS.md
