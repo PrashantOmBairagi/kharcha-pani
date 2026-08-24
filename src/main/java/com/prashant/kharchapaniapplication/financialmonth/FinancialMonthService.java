@@ -126,6 +126,17 @@ public class FinancialMonthService {
     }
 
     @Transactional(readOnly = true)
+    public FinancialMonthSummaryResponse getSummaryByYearMonth(User user, int year, int month) {
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("Invalid month: " + month);
+        }
+        return financialMonthRepository.findByUserIdAndYearAndMonth(user.getId(), year, month)
+                .map(this::buildSummary)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Financial month not found for " + year + "-" + month));
+    }
+
+    @Transactional(readOnly = true)
     public Page<FinancialMonthSummaryResponse> getAllMonthsSummary(User user, Pageable pageable) {
         Pageable effectivePageable = pageable.getSort().isSorted()
                 ? pageable

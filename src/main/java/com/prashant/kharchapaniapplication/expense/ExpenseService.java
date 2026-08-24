@@ -21,7 +21,7 @@ public class ExpenseService {
     private final ExpenseRepository expenseRepository;
     private final FinancialMonthService financialMonthService;
 
-    public void createExpense(ExpenseRequest request, User currentUser) {
+    public Expense createExpense(ExpenseRequest request, User currentUser) {
         Expense expense = new Expense();
         expense.setCategory(request.getCategory());
         expense.setDescription(request.getDescription());
@@ -32,7 +32,7 @@ public class ExpenseService {
         FinancialMonth financialMonth = resolveFinancialMonth(request, currentUser);
         expense.setFinancialMonth(financialMonth);
 
-        expenseRepository.save(expense);
+        return expenseRepository.save(expense);
     }
 
     private FinancialMonth resolveFinancialMonth(ExpenseRequest request, User currentUser) {

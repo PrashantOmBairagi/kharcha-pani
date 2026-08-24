@@ -27,10 +27,18 @@ public class ExpenseController {
     private final AuthService authService;
 
     @PostMapping
-    public ResponseEntity<?> createExpense(@Valid @RequestBody ExpenseRequest expenseRequest) {
+    public ResponseEntity<ExpenseResponse> createExpense(@Valid @RequestBody ExpenseRequest expenseRequest) {
         User currentUser = authService.getCurrentUser();
-        expenseService.createExpense(expenseRequest, currentUser);
-        return new ResponseEntity<>("Kharcha Saved!",HttpStatus.ACCEPTED);
+        Expense saved = expenseService.createExpense(expenseRequest, currentUser);
+        ExpenseResponse response = new ExpenseResponse(
+                saved.getId(),
+                saved.getDescription(),
+                saved.getAmount(),
+                saved.getCategory(),
+                saved.getExpenseDate(),
+                saved.getUser().getId()
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping
