@@ -5,7 +5,9 @@ import com.prashant.kharchapaniapplication.expense.Expense;
 import com.prashant.kharchapaniapplication.user.User;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
@@ -13,7 +15,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-
+@AllArgsConstructor
+@NoArgsConstructor
 @Entity
 @Getter
 @Setter
@@ -54,7 +57,6 @@ public class FinancialMonth {
     )
     @JsonIgnore
     private List<Expense> expenses = new ArrayList<>();
-
 
 
 }
