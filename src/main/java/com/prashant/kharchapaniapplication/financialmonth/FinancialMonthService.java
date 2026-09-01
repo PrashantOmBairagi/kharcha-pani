@@ -57,6 +57,20 @@ public class FinancialMonthService {
                 .orElseGet(() -> createNewMonth(user, currentYear, currentMonth));
     }
 
+    public FinancialMonth getOrCreateMonthForExpenseDate(User user, LocalDate expenseDate) {
+        LocalDate now = LocalDate.now();
+        int expenseYear = expenseDate.getYear();
+        int expenseMonth = expenseDate.getMonthValue();
+        int currentYear = now.getYear();
+        int currentMonth = now.getMonthValue();
+
+        if (expenseYear == currentYear && expenseMonth == currentMonth) {
+            return getOrCreateCurrentMonth(user);
+        }
+
+        throw new IllegalArgumentException("FMONTH_REQUIRED|" + expenseYear + "|" + expenseMonth);
+    }
+
     private FinancialMonth createNewMonth(User user, int year, int month) {
         BigDecimal previousBudget = getPreviousMonthBudget(user, year, month);
 

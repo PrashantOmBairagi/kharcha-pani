@@ -72,5 +72,6 @@ Thumbs.db
 # AI Memory
 .ai-memory/
 
-# Agent instructions (local-only by owner choice)
+# Agent instructions (less needed)
 AGENTS.md
+CHANGES_SUMMARY.txt

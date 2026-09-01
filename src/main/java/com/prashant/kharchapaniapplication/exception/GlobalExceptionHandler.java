@@ -25,7 +25,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String,Object>> handleIllegalArgumentException(IllegalArgumentException e) {
         Map<String,Object> error = new HashMap <>();
-        error.put(MSG, e.getMessage());
+        String message = e.getMessage();
+        
+        if (message != null && message.startsWith("FMONTH_REQUIRED|")) {
+            String[] parts = message.split("\\|");
+            if (parts.length >= 3) {
+                error.put(MSG, "Financial month required for " + parts[1] + "-" + parts[2]);
+                error.put("year", Integer.parseInt(parts[1]));
+                error.put("month", Integer.parseInt(parts[2]));
+                error.put("code", "FMONTH_REQUIRED");
+                error.put(STATUS, HttpStatus.BAD_REQUEST.value());
+                return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+            }
+        }
+        
+        error.put(MSG, message);
         error.put(STATUS, HttpStatus.CONFLICT.value());
         return new ResponseEntity<>(error, HttpStatus.CONFLICT);
     }

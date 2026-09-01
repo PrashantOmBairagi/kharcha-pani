@@ -116,9 +116,7 @@ The backend is currently deployed on **AWS EC2** with application networking con
 
 ## 📅 Financial Month Management
 
-Kharcha Pani models financial data around individual financial months.
-
-Each user can have multiple financial months, while each financial month can contain multiple expenses.
+Kharcha Pani models financial data around individual financial months — each user can have multiple financial months, while each financial month contains multiple expenses.
 
 ```text
 User
@@ -138,15 +136,72 @@ User
         └── Expense
 ```
 
-A financial month contains information such as:
+A financial month contains:
 
-* Year
-* Month
+* Year, Month
 * Monthly Budget
-* Monthly Expenses
-* User Ownership
+* Planned Monthly Income
+* Aggregated Expenses (server-side)
 
-The backend enforces uniqueness so that a user cannot create multiple financial-month records for the same year and month.
+**Implemented features:**
+
+* **Auto-create on first expense** — if a financial month doesn't exist for the expense's month, it's created with the previous month's budget (or 0) and income = 0
+* **Budget defaults** to previous month's budget; income is planned-only
+* **Server-side aggregation** (Java Streams, no custom JPQL):
+  * Summary: totalSpent, remaining, expenseCount, lastExpenseDate
+  * Category breakdown: totals + percentages (sorted desc)
+  * Daily trend: zero-filled per day (capped at today for current month)
+  * Recent expenses: expenseDate desc, createdAt desc tie-break
+* **Date validation** — expenseDate must fall within its FinancialMonth (400 if not)
+* **FMONTH_REQUIRED** (400) — if expenseDate's month has no financial month (auto-create only for current month); mobile shows "Create month?" dialog
+* **Uniqueness** — DB constraint `(user_id, year, month)` prevents duplicates
+* **Ownership checks** — all endpoints validate user owns the financial month
+
+---
+
+## 📡 REST API
+
+### Authentication
+```http
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+```
+
+### User
+```http
+POST   /api/v1/users
+POST   /api/v1/users/complete-profile
+GET    /api/v1/users/profile
+```
+
+### Expenses
+```http
+POST   /api/v1/expenses
+GET    /api/v1/expenses
+GET    /api/v1/expenses/{id}
+PUT    /api/v1/expenses/{id}
+DELETE /api/v1/expenses/{id}
+```
+
+#### Paginated Expenses
+```http
+GET /api/v1/expenses?pageNo=1&pageSize=10&sortBy=expenseDate&sortDir=desc&financialMonthId=uuid
+```
+
+### Financial Month
+```http
+POST   /api/v1/fmonth                              # Create (201, 409 if exists)
+GET    /api/v1/fmonth/current                      # Current month summary (404 if missing)
+GET    /api/v1/fmonth/by-date?year=2025&month=7    # Specific month summary
+GET    /api/v1/fmonth/list?pageNo=1&pageSize=10    # Paginated list (year/month desc)
+PATCH  /api/v1/fmonth/{id}/budget                  # Update budget (ownership checked)
+GET    /api/v1/fmonth/{id}/expenses?pageNo=1&pageSize=10
+GET    /api/v1/fmonth/{id}/detail?pageNo=1&pageSize=10  # Summary + breakdown + trend + recent
+```
+
+* All endpoints JWT-protected, ownership validated
+* Error format: `{ "Message": "...", "Status": 404/409/400 }`
+* Swagger UI: `/swagger-ui.html` | OpenAPI spec: `/v3/api-docs`
 
 ---
 

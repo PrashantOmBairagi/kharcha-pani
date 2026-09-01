@@ -39,7 +39,7 @@ public class ExpenseService {
         if (request.getFinancialMonthId() != null) {
             return financialMonthService.getFinancialMonthByIdAndUser(request.getFinancialMonthId(), currentUser);
         }
-        return financialMonthService.getOrCreateCurrentMonth(currentUser);
+        return financialMonthService.getOrCreateMonthForExpenseDate(currentUser, request.getExpenseDate());
     }
 
     public void updateExpense(UUID expenseId, ExpenseUpdateRequest request, User currentUser) {
