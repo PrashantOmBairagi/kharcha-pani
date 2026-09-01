@@ -415,10 +415,12 @@ Expense retrieval supports paginated requests to avoid unnecessarily loading lar
 Example:
 
 ```http
-GET /api/v1/expenses?pageNo=1&pageSize=10
+GET /api/v1/expenses?pageNo=1&pageSize=10&sortBy=expenseDate&sortDir=desc
 ```
 
-Spring Data's `Pageable` and `Page` abstractions are used to handle pagination at the repository/service layer.
+Spring Data's `Pageable` and `Page` abstractions handle pagination at the repository/service layer.
+
+**Pagination style:** 1-based `pageNo` / `pageSize` (default 10, max 50) — used by both expense and financial-month endpoints. Spring `Page` returned directly (no custom wrapper).
 
 This allows the backend to scale better as a user's expense history grows.
 
@@ -441,43 +443,6 @@ This allows the backend to scale better as a user's expense history grows.
 * Docker Containerization
 * Cloud Deployment
 * API Documentation with OpenAPI / Swagger
-
----
-
-# 📡 REST API
-
-## Authentication
-
-```http
-POST /api/v1/auth/register
-POST /api/v1/auth/login
-```
-
-## User
-
-```http
-POST /api/v1/users
-POST /api/v1/users/complete-profile
-GET  /api/v1/users/profile
-```
-
-## Expenses
-
-```http
-POST   /api/v1/expenses
-GET    /api/v1/expenses
-GET    /api/v1/expenses/{id}
-PUT    /api/v1/expenses/{id}
-DELETE /api/v1/expenses/{id}
-```
-
-### Paginated Expenses
-
-```http
-GET /api/v1/expenses?pageNo=1&pageSize=10
-```
-
-> FinancialMonth API endpoints will be documented here once the corresponding controller layer is finalized.
 
 ---
 
@@ -632,22 +597,50 @@ The backend is packaged and deployed as a Dockerized application.
 
 The production backend runs on AWS EC2 with configured networking.
 
+### Monthly Aggregation
+
+Server-side financial-month summaries via Java Streams (totals, category breakdown %, daily trend) — no custom JPQL queries.
+
+### Transactional Read Safety
+
+`@Transactional(readOnly=true)` on aggregation methods — keeps Hibernate Session open for lazy loading, skips dirty-checking for performance.
+
+### Structured Error Contracts
+
+Date validation with typed 400 responses (`FMONTH_REQUIRED` carrying year/month/code) — mobile shows "Create month?" dialog.
+
+### Service-Layer Ownership
+
+Ownership checks in service layer (not just controller) — `getFinancialMonthByIdAndUser` reused across endpoints.
+
 ---
 
 # 🚀 Roadmap
 
-### 🟢 Completed
+### ✅ Completed
 
 - Built and integrated the **Kharcha Pani Android client**
-- Introduced **FinancialMonth-based monthly budgeting and expense organization**
+- Introduced **FinancialMonth-based monthly budgeting and expense organization** (auto-create, aggregation, date validation)
 - Dockerized and deployed the backend on **AWS EC2 with cloud networking**
+- **OpenAPI/Swagger** documentation (`/swagger-ui.html`, `/v3/api-docs`)
+- **FMONTH_REQUIRED** structured error contract (400 with year/month/code)
 
-### 🔵 Upcoming
+### 🟡 In Progress
+
+- **Phase 5: Testing Foundations** — JUnit 5 → Mockito → AssertJ → `@WebMvcTest`/`@DataJpaTest` (owner-led, ≥1 test per logic class)
+
+### 🔵 Near-Term
+
+- **Phase 6: Hardening** — deletion block if expenses exist, expense-date-within-month validation, max page size 50 enforcement
+- **Phase 7: Mobile App Integration** — consume `/api/v1/fmonth` endpoints (dashboard, history, detail, budget edit)
+- **Phase C: CI/CD Pipeline** — build + test on push, Docker image deploy to EC2
+
+### 🟣 Future
 
 - Email Verification & OTP Authentication
 - Advanced Expense Filtering & Dedicated Analytics APIs
 - Borrow & Lend Tracking
-- Automated Backend Tests & CI/CD Pipeline
+- Full Integration Test Infrastructure (`@SpringBootTest`, Testcontainers)
 ---
 
 # 📈 What I Learned
