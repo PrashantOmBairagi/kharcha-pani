@@ -17,22 +17,6 @@ public class UserController {
 
     private final UserService userService;
 
-    @PostMapping()
-    public ResponseEntity<?> save(@Valid @RequestBody User user) {
-        User savedUser = userService.addUser(user);
-        UserResponse response = new UserResponse(
-                savedUser.getId(),
-                savedUser.getEmail(),
-                savedUser.getFirstName(),
-                savedUser.getLastName(),
-                savedUser.getPhone(),
-                savedUser.getBudget(),
-                savedUser.getCreatedAt(),
-                savedUser.isProfileComplete()
-        );
-        return ResponseEntity.ok(response);
-    }
-
     @PostMapping("/complete-profile")
     public ResponseEntity<?> completeProfile(@Valid @RequestBody CompleteProfileRequest request) {
         userService.completeProfile(request);

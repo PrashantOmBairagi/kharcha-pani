@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -48,5 +49,18 @@ class FinancialMonthServiceTest {
         assertNotNull(result);
         assertEquals(month, result.getMonth());
         assertEquals(year, result.getYear());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "18a33460-96e7-41be-9d99-5f17b9402d83"
+    })
+    void shouldGetFinancialMonthByIdAndUser(UUID fMonthId ) {
+
+
+        Optional <FinancialMonth> fMonth = fMonthRepository.findById(fMonthId);
+
+        assertTrue(fMonth.isPresent());
+        assertEquals(fMonthId , fMonth.get().getId());
     }
 }
