@@ -91,13 +91,10 @@ public class FinancialMonthService {
                 .orElse(BigDecimal.ZERO);
     }
 
-    public FinancialMonth updateFMonthBudget(UUID fMonthId, BigDecimal budget) {
-        return financialMonthRepository.findById(fMonthId)
-                .map(financialMonth -> {
-                    financialMonth.setBudget(budget);
-                    return financialMonthRepository.save(financialMonth);
-                })
-                .orElseThrow(() -> new IllegalArgumentException("Financial month not found: " + fMonthId));
+    public FinancialMonth updateFMonthBudget(UUID fMonthId, User currentUser, BigDecimal budget) {
+        FinancialMonth financialMonth = getFinancialMonthByIdAndUser(fMonthId, currentUser);
+        financialMonth.setBudget(budget);
+        return financialMonthRepository.save(financialMonth);
     }
 
     public FinancialMonth getFinancialMonthByIdAndUser(UUID fMonthId, User user) {

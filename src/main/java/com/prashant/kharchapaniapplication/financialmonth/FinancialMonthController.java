@@ -35,9 +35,7 @@ public class FinancialMonthController {
     @PatchMapping("/{id}/budget")
     public ResponseEntity<FinancialMonthSummaryResponse> updateBudget(@PathVariable UUID id, @Valid @RequestBody UpdateBudgetRequest request) {
         User currentUser = authService.getCurrentUser();
-        FinancialMonth financialMonth = fMonthService.getFinancialMonthByIdAndUser(id, currentUser);
-        financialMonth.setBudget(request.getBudget());
-        FinancialMonth saved = fMonthService.save(financialMonth);
+        FinancialMonth saved = fMonthService.updateFMonthBudget(id, currentUser, request.getBudget());
         FinancialMonthSummaryResponse response = fMonthService.getSummary(saved.getId());
         return ResponseEntity.ok(response);
     }
