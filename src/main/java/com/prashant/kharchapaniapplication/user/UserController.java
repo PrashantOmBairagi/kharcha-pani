@@ -18,9 +18,19 @@ public class UserController {
     private final UserService userService;
 
     @PostMapping()
-    public User save(@Valid @RequestBody User user) {
-        userService.addUser(user);
-        return user;
+    public ResponseEntity<?> save(@Valid @RequestBody User user) {
+        User savedUser = userService.addUser(user);
+        UserResponse response = new UserResponse(
+                savedUser.getId(),
+                savedUser.getEmail(),
+                savedUser.getFirstName(),
+                savedUser.getLastName(),
+                savedUser.getPhone(),
+                savedUser.getBudget(),
+                savedUser.getCreatedAt(),
+                savedUser.isProfileComplete()
+        );
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/complete-profile")
@@ -32,7 +42,18 @@ public class UserController {
     public ResponseEntity<?> getProfile() {
         User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         UUID id = currentUser.getId();
-        return ResponseEntity.ok(userService.getUser(id));
+        User user = userService.getUser(id);
+        UserResponse response = new UserResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getPhone(),
+                user.getBudget(),
+                user.getCreatedAt(),
+                user.isProfileComplete()
+        );
+        return ResponseEntity.ok(response);
     }
 
 }

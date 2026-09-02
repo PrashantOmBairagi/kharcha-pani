@@ -11,8 +11,8 @@ import java.util.UUID;
 public class UserService {
     private final UserRepository userRepository;
 
-    public void addUser(User user) {
-        userRepository.save(user);
+    public User addUser(User user) {
+        return userRepository.save(user);
     }
     public void completeProfile(CompleteProfileRequest request) {
 

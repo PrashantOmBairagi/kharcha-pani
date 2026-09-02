@@ -18,8 +18,8 @@ public class PublicController {
     @GetMapping("/info")
     public Map<String, String> info() {
         return Map.of(
-                "application", "Smart Finance Tracker",
-                "version", "2.0",
+                "application", "KHARCHA PANI - India's new finance buddy",
+                "version", "v3.0",
                 "status", "ACTIVE",
                 "timestamp", String.valueOf(new Date(System.currentTimeMillis())),
                 "Author","Prashant Bairagi"
