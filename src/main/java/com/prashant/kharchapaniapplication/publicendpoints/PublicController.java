@@ -20,9 +20,10 @@ public class PublicController {
         return Map.of(
                 "application", "KHARCHA PANI - India's new finance buddy",
                 "version", "v3.0",
-                "status", "ACTIVE",
+                "status", "DEV-ACTIVE",
                 "timestamp", String.valueOf(new Date(System.currentTimeMillis())),
-                "Author","Prashant Bairagi"
+                "Author","Prashant Bairagi",
+                "Portfolio","https://prashant-bairagi-portfolio.vercel.app"
         );
     }
 }
