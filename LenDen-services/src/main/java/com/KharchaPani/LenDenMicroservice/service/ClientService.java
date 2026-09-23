@@ -19,7 +19,7 @@ public class ClientService {
     public Client createClient(ClientRequest request, UUID userId){
 
         Client client = new Client();
-        client.setUserID(userId);
+        client.setUserId(userId);
         client.setClientFirstName(request.getClientFirstName());
         client.setClientLastName(request.getClientLastName());
         client.setClientDescription(request.getClientDescription());

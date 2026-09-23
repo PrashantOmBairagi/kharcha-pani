@@ -1,7 +1,7 @@
 package com.KharchaPani.LenDenMicroservice.client;
 
 import com.KharchaPani.LenDenMicroservice.enums.ClientStatus;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,14 +10,19 @@ import java.util.UUID;
 
 @Getter
 @Setter
+@Entity
 @Table(name = "clients")
 public class Client {
 
-    private UUID clientId;
-    private UUID userID;
+    @Id
+    @GeneratedValue(generator = "UUID")
+    @Column(name = "client_id", updatable = false, nullable = false)
+    private UUID id;
+
+    private UUID userId;
     private String clientFirstName;
     private String clientLastName;
-    private Integer clientMobileNumber;
+    private String clientMobileNumber;
     private String clientDescription;
     private ClientStatus clientStatus;
     private Boolean clientAlertsActive;

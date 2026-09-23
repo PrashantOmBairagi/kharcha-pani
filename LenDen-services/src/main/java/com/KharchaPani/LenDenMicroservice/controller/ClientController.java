@@ -12,10 +12,16 @@ import java.util.List;
 import java.util.UUID;
 
 @RequiredArgsConstructor
-@RestController("api/v2/lenden/client")
+@RestController()
+@RequestMapping("api/v2/lenden/client")
 public class ClientController {
 
     private final ClientService clientService;
+
+    @GetMapping("/health")
+    public String health() {
+        return "OK";
+    }
 
     @PostMapping()
     public ResponseEntity<Client> registerClient(
@@ -27,13 +33,15 @@ public class ClientController {
     }
 
     @GetMapping()
-    public ResponseEntity<List<Client>> getAllClients(@RequestBody UUID userId){
+    public ResponseEntity<List<Client>> getAllClients(){
+        UUID userId = null;
         List<Client> clients = clientService.getAllClients(userId);
         return ResponseEntity.ok().body(clients);
     }
 
     @PatchMapping()
-    public ResponseEntity<Client> updateClient(@RequestBody String Name){
+    public ResponseEntity<Client> updateClient(@Valid ClientRequest request, @RequestBody UUID clientId){
+
         return new ResponseEntity<>(HttpStatus.OK);
     }
 

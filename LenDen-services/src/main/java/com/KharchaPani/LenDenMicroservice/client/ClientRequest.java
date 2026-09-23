@@ -28,7 +28,7 @@ public class ClientRequest {
             regexp = "^[6-9][0-9]{9}$",
             message = "Enter a valid 10-digit Indian mobile number."
     )
-    private Integer clientMobileNumber;
+    private String clientMobileNumber;
 
     @Size(max = 200,
             message = "Client Description cannot exceed 200 characters.")
