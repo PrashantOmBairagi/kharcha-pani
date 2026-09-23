@@ -94,11 +94,18 @@ Validation:
 }
 ```
 
-**Response 404 — bad credentials**
+**Response 404 — login failure** (still 404, not 401)
+
+Email not in DB:
+```json
+{ "Message": "No account exists with this email. Try signing up.", "Status": 404 }
+```
+
+Wrong password:
 ```json
 { "Message": "Invalid credentials", "Status": 404 }
 ```
-Login failure is a **404**, not 401.
+
 
 ---
 

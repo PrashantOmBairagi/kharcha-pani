@@ -25,7 +25,8 @@ public class AuthService {
 
         User user = userRepository
                 .findByEmail(request.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException("Invalid credentials"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No account exists with this email. Try signing up."));
 
         if (!passwordEncoder.matches(
                 request.getPassword(),
