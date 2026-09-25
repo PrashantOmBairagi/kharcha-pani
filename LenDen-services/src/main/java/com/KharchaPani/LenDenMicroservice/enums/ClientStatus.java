@@ -5,5 +5,6 @@ public enum ClientStatus {
     ACTIVE,
     INACTIVE,
     DEFAULTER,
-    INFORMAL
+    INFORMAL,
+    DELETED
 }

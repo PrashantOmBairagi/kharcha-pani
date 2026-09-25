@@ -2,6 +2,7 @@ package com.KharchaPani.LenDenMicroservice.controller;
 
 import com.KharchaPani.LenDenMicroservice.client.Client;
 import com.KharchaPani.LenDenMicroservice.client.ClientRequest;
+import com.KharchaPani.LenDenMicroservice.client.ClientUpdateRequest;
 import com.KharchaPani.LenDenMicroservice.service.ClientService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,10 +40,18 @@ public class ClientController {
         return ResponseEntity.ok().body(clients);
     }
 
-    @PatchMapping()
-    public ResponseEntity<Client> updateClient(@Valid ClientRequest request, @RequestBody UUID clientId){
-
-        return new ResponseEntity<>(HttpStatus.OK);
+    @GetMapping()
+    public Client getClientById(UUID clientId,UUID userId){
+        return clientService.getClientById(clientId,userId);
     }
 
+    @PatchMapping()
+    public ResponseEntity<Client> updateClient(@Valid ClientUpdateRequest request, @RequestBody UUID clientId){
+        return clientService.updateClient(request,clientId);
+    }
+
+    @DeleteMapping()
+    public ResponseEntity<String> deleteClient(@RequestBody UUID clientId, UUID userId){
+        return clientService.deleteClient(clientId,userId);
+    }
 }

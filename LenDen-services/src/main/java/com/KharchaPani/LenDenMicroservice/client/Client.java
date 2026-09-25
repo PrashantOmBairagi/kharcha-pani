@@ -1,11 +1,13 @@
 package com.KharchaPani.LenDenMicroservice.client;
 
 import com.KharchaPani.LenDenMicroservice.enums.ClientStatus;
+import com.KharchaPani.LenDenMicroservice.transaction.Transaction;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -27,4 +29,11 @@ public class Client {
     private ClientStatus clientStatus;
     private Boolean clientAlertsActive;
     private LocalDate nextSettlementDate;
+
+    @OneToMany(
+            mappedBy = "client",
+            fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL
+    )
+    private List<Transaction> transactions;
 }

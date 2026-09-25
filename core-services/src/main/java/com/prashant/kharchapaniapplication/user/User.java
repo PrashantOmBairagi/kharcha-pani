@@ -1,7 +1,6 @@
 package com.prashant.kharchapaniapplication.user;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.prashant.kharchapaniapplication.expense.Expense;
 import com.prashant.kharchapaniapplication.financialmonth.FinancialMonth;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
@@ -9,14 +8,11 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
-
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
-
 import static org.hibernate.internal.util.collections.CollectionHelper.listOf;
 
 @Entity
@@ -56,19 +52,17 @@ public class User implements UserDetails {
     )
     private String phone;
 
-    @Column(nullable =true, precision = 19, scale = 2)
+    @Column(precision = 19, scale = 2)
     private Long budget;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
 
-    @Column(nullable = true)
     private boolean profileComplete;
 
     @OneToMany(
             mappedBy = "user",
-            cascade = CascadeType.ALL,
-            orphanRemoval = true
+            cascade = CascadeType.ALL
     )
     @JsonIgnore
     private List<FinancialMonth> financialMonths = new ArrayList<>();
