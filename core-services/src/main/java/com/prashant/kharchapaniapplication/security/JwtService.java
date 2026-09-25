@@ -16,45 +16,63 @@ import java.util.function.Function;
 @Service
 @RequiredArgsConstructor
 public class JwtService {
-    @Value("${jwt.secret}")
-    private String jwtSecret;
+    @Value("${jwt.accessSecret}")
+    private String jwtAccessSecret;
 
-    @Value("${jwt.expiration}")
-    private long jwtExpiration;
+    @Value("${jwt.accessExpiration}")
+    private long jwtAccessExpiration;
 
-    private SecretKey getSecretKey() {
+    @Value("${jwt.refreshSecret}")
+    private String jwtRefreshSecret;
+
+    @Value("${jwt.refreshExpiration}")
+    private long jwtRefreshExpiration;
+
+    private SecretKey getSecretKey(String jwtSecret) {
         byte[] keyBytes = Base64.getDecoder().decode(jwtSecret);
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    public String generateToken(User user) {
+    public String generateAccessToken(User user) {
 
         return Jwts.builder()
                 .subject(user.getId().toString())
                 .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
-                .signWith(getSecretKey())
+                .expiration(new Date(System.currentTimeMillis() + jwtAccessExpiration))
+                .signWith(getSecretKey(jwtAccessSecret))
+                .compact();
+    }
+    public String generateRefreshToken(User user) {
+        return Jwts.builder()
+                .subject(user.getId().toString())
+                .issuedAt(new Date(System.currentTimeMillis()))
+                .expiration(new Date(System.currentTimeMillis() + jwtRefreshExpiration))
+                .signWith(getSecretKey(jwtRefreshSecret))
                 .compact();
     }
 
     public UUID extractUserId(String token) {
-        return UUID.fromString(extractClaim(token, Claims::getSubject)) ;
+        return UUID.fromString(extractClaim(token, Claims::getSubject,jwtRefreshSecret)) ;
     }
 
-    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = extractAllClaims(token);
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver , String jwtSecret) {
+        final Claims claims = extractAllClaims(token,jwtSecret);
         return claimsResolver.apply(claims);
     }
 
-    private Claims extractAllClaims(String token) {
+    private Claims extractAllClaims(String token,String jwtSecret) {
         return Jwts.parser()
-                .verifyWith(getSecretKey())
+                .verifyWith(getSecretKey(jwtSecret))
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
     }
 
-    public Date extractExpiration(String token) {return extractClaim(token, Claims::getExpiration);}
+    public boolean validateRefreshToken(String refreshToken) {
+        return extractClaim(refreshToken, Claims::getExpiration,jwtRefreshSecret).after(new Date());
+    }
+
+    public Date extractExpiration(String token) {return extractClaim(token, Claims::getExpiration,jwtAccessSecret);}
 
     public boolean isTokenExpired(String token) {
         return extractExpiration(token).before(new Date());

@@ -1,17 +1,15 @@
 package com.prashant.kharchapaniapplication.auth;
 
+
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@AllArgsConstructor
 @NoArgsConstructor
-public class AuthResponse {
-
-    private String accessToken;
+@AllArgsConstructor
+public class RefreshTokenRequest {
+    @NotBlank(message = "Refresh token is required.")
     private String refreshToken;
-    private String message;
-    private boolean profileComplete;
-
 }

@@ -1,5 +1,7 @@
 package com.prashant.kharchapaniapplication.exception;
 
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -50,5 +52,25 @@ public class GlobalExceptionHandler {
         error.put(MSG, e.getAllErrors().get(0).getDefaultMessage());
         error.put(STATUS,HttpStatus.BAD_REQUEST.value());
         return new ResponseEntity<>(error,HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<Map<String,Object>> handleUnauthorizedException(UnauthorizedException e) {
+        Map<String,Object> error = new HashMap <>();
+        error.put(MSG, e.getMessage());
+        error.put(STATUS,HttpStatus.UNAUTHORIZED.value());
+        return new ResponseEntity<>(error,HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(JwtException.class)
+    public ResponseEntity<Map<String,Object>> handleJwtException(JwtException e) {
+        Map<String,Object> error = new HashMap <>();
+        if (e instanceof ExpiredJwtException) {
+            error.put(MSG, "Refresh token expired");
+        } else {
+            error.put(MSG, "Invalid refresh token");
+        }
+        error.put(STATUS,HttpStatus.UNAUTHORIZED.value());
+        return new ResponseEntity<>(error,HttpStatus.UNAUTHORIZED);
     }
 }

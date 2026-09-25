@@ -1,17 +1,21 @@
 package com.prashant.kharchapaniapplication.auth;
 
 import com.prashant.kharchapaniapplication.exception.ResourceNotFoundException;
+import com.prashant.kharchapaniapplication.exception.UnauthorizedException;
 import com.prashant.kharchapaniapplication.security.JwtService;
 import com.prashant.kharchapaniapplication.user.User;
 import com.prashant.kharchapaniapplication.user.UserRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -35,9 +39,10 @@ public class AuthService {
             throw new ResourceNotFoundException("Invalid credentials");
         }
 
-        String token = jwtService.generateToken(user);
+        String accessToken = jwtService.generateAccessToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
 
-        return ResponseEntity.ok(new AuthResponse(token,"Login Successful",user.isProfileComplete())
+        return ResponseEntity.ok(new AuthResponse(accessToken,refreshToken,"Login Successful",user.isProfileComplete())
         );
     }
 
@@ -57,13 +62,28 @@ public class AuthService {
 
         userRepository.save(user);
 
-        String token = jwtService.generateToken(user);
-        return ResponseEntity.ok().body(new AuthResponse(token,"Registration Successful", user.isProfileComplete()));
+        String accessToken = jwtService.generateAccessToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
+        return ResponseEntity.ok().body(new AuthResponse(accessToken,refreshToken,"Registration Successful", user.isProfileComplete()));
     }
     public User getCurrentUser() {
         return (User) SecurityContextHolder
                             .getContext()
                             .getAuthentication()
                             .getPrincipal();
+    }
+    public String refreshTokens(String refreshToken) {
+        UUID userId = jwtService.extractUserId(refreshToken);
+        User user = userRepository
+                .findById(userId)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("User Not Found or Token is broken")
+                );
+        if(jwtService.validateRefreshToken(refreshToken)){
+            return jwtService.generateAccessToken(user);
+        }
+        else {
+            throw new UnauthorizedException("Invalid or expired refresh token");
+        }
     }
 }
