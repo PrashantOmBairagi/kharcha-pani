@@ -49,7 +49,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String,Object>> methodArgumentNotValidException(MethodArgumentNotValidException e) {
         Map<String,Object> error = new HashMap <>();
-        error.put(MSG, e.getAllErrors().get(0).getDefaultMessage());
+        error.put(MSG, e.getAllErrors().getFirst().getDefaultMessage());
         error.put(STATUS,HttpStatus.BAD_REQUEST.value());
         return new ResponseEntity<>(error,HttpStatus.BAD_REQUEST);
     }
@@ -72,5 +72,16 @@ public class GlobalExceptionHandler {
         }
         error.put(STATUS,HttpStatus.UNAUTHORIZED.value());
         return new ResponseEntity<>(error,HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<Map<String,Object>> handleConflictException(ConflictException e) {
+        Map<String,Object> error = new HashMap <>();
+        if(e.getMessage().contains("Duplicate entry")){
+            error.put(MSG, "This phone number"+e.getMessage().substring(44,57)+" is already linked to another account.");
+        }
+        else error.put(MSG, "Entered Details already exists for Other User.");
+        error.put(STATUS,HttpStatus.CONFLICT.value());
+        return new ResponseEntity<>(error,HttpStatus.CONFLICT);
     }
 }
