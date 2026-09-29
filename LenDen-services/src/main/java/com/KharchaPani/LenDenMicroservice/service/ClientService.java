@@ -2,9 +2,12 @@ package com.KharchaPani.LenDenMicroservice.service;
 
 import com.KharchaPani.LenDenMicroservice.client.Client;
 import com.KharchaPani.LenDenMicroservice.client.ClientRequest;
+import com.KharchaPani.LenDenMicroservice.client.ClientUpdateRequest;
 import com.KharchaPani.LenDenMicroservice.enums.ClientStatus;
+import com.KharchaPani.LenDenMicroservice.exception.ResourceNotFoundException;
 import com.KharchaPani.LenDenMicroservice.repository.ClientRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,7 +19,7 @@ public class ClientService {
 
     private final ClientRepository clientRepository;
 
-    public Client createClient(ClientRequest request, UUID userId){
+    public Client createClient(ClientRequest request, UUID userId) {
 
         Client client = new Client();
         client.setUserId(userId);
@@ -31,8 +34,44 @@ public class ClientService {
         return clientRepository.save(client);
     }
 
-    public List<Client> getAllClients(UUID userId){
+    public List<Client> getAllClients(UUID userId) {
         return clientRepository.findAllByUserId(userId);
     }
 
+    public Client getClientById(UUID clientId, UUID userId) {
+        return clientRepository
+                .findByIdAndUserId(clientId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Client not found"));
+    }
+
+    public ResponseEntity<Client> updateClient(
+            ClientUpdateRequest request,
+            UUID clientId,
+            UUID userId) {
+
+        Client client = clientRepository
+                .findByIdAndUserId(clientId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Client not found"));
+
+        client.setClientFirstName(request.getClientFirstName());
+        client.setClientLastName(request.getClientLastName());
+        client.setClientDescription(request.getClientDescription());
+        client.setClientMobileNumber(request.getClientMobileNumber());
+        client.setNextSettlementDate(request.getNextSettlementDate());
+
+        Client updatedClient = clientRepository.save(client);
+
+        return ResponseEntity.ok(updatedClient);
+    }
+
+    public ResponseEntity<String> deleteClient(UUID clientId, UUID userId) {
+
+        Client client = clientRepository
+                .findByIdAndUserId(clientId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Client not found"));
+
+        clientRepository.delete(client);
+
+        return ResponseEntity.ok("Client deleted successfully");
+    }
 }

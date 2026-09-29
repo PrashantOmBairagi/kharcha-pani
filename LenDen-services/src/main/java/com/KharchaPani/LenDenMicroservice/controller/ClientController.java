@@ -2,17 +2,20 @@ package com.KharchaPani.LenDenMicroservice.controller;
 
 import com.KharchaPani.LenDenMicroservice.client.Client;
 import com.KharchaPani.LenDenMicroservice.client.ClientRequest;
+import com.KharchaPani.LenDenMicroservice.client.ClientUpdateRequest;
 import com.KharchaPani.LenDenMicroservice.service.ClientService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 import java.util.UUID;
 
 @RequiredArgsConstructor
-@RestController()
+@RestController
 @RequestMapping("api/v2/lenden/client")
 public class ClientController {
 
@@ -23,26 +26,38 @@ public class ClientController {
         return "OK";
     }
 
-    @PostMapping()
+    @PostMapping
     public ResponseEntity<Client> registerClient(
             @Valid @RequestBody ClientRequest request,
-            UUID userId
-        ){
-        Client createdClient = clientService.createClient(request,userId);
-        return ResponseEntity.ok().body(createdClient);
+            @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(clientService.createClient(request, userId));
     }
 
-    @GetMapping()
-    public ResponseEntity<List<Client>> getAllClients(){
-        UUID userId = null;
-        List<Client> clients = clientService.getAllClients(userId);
-        return ResponseEntity.ok().body(clients);
+    @GetMapping
+    public ResponseEntity<List<Client>> getAllClients(@AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(clientService.getAllClients(userId));
     }
 
-    @PatchMapping()
-    public ResponseEntity<Client> updateClient(@Valid ClientRequest request, @RequestBody UUID clientId){
-
-        return new ResponseEntity<>(HttpStatus.OK);
+    @GetMapping("/{clientId}")
+    public ResponseEntity<Client> getClientById(
+            @PathVariable UUID clientId,
+            @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(clientService.getClientById(clientId, userId));
     }
 
+    @PatchMapping("/{clientId}")
+    public ResponseEntity<Client> updateClient(
+            @PathVariable UUID clientId,
+            @Valid @RequestBody ClientUpdateRequest request,
+            @AuthenticationPrincipal UUID userId) {
+        return clientService.updateClient(request, clientId, userId);
+    }
+
+    @DeleteMapping("/{clientId}")
+    public ResponseEntity<String> deleteClient(
+            @PathVariable UUID clientId,
+            @AuthenticationPrincipal UUID userId) {
+        return clientService.deleteClient(clientId, userId);
+    }
 }
