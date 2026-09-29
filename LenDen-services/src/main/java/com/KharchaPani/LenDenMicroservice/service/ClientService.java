@@ -23,13 +23,29 @@ public class ClientService {
 
         Client client = new Client();
         client.setUserId(userId);
-        client.setClientFirstName(request.getClientFirstName());
-        client.setClientLastName(request.getClientLastName());
-        client.setClientDescription(request.getClientDescription());
-        client.setClientMobileNumber(request.getClientMobileNumber());
+
+        if (request.getClientFirstName() != null) {
+            client.setClientFirstName(request.getClientFirstName());
+        }
+
+        if (request.getClientLastName() != null) {
+            client.setClientLastName(request.getClientLastName());
+        }
+
+        if (request.getClientDescription() != null) {
+            client.setClientDescription(request.getClientDescription());
+        }
+
+        if (request.getClientMobileNumber() != null) {
+            client.setClientMobileNumber(request.getClientMobileNumber());
+        }
+
+        if (request.getNextSettlementDate() != null) {
+            client.setNextSettlementDate(request.getNextSettlementDate());
+        }
+
         client.setClientStatus(ClientStatus.ACTIVE);
         client.setClientAlertsActive(Boolean.FALSE);
-        client.setNextSettlementDate(request.getNextSettlementDate());
 
         return clientRepository.save(client);
     }
@@ -53,11 +69,25 @@ public class ClientService {
                 .findByIdAndUserId(clientId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Client not found"));
 
-        client.setClientFirstName(request.getClientFirstName());
-        client.setClientLastName(request.getClientLastName());
-        client.setClientDescription(request.getClientDescription());
-        client.setClientMobileNumber(request.getClientMobileNumber());
-        client.setNextSettlementDate(request.getNextSettlementDate());
+        if (request.getClientFirstName() != null) {
+            client.setClientFirstName(request.getClientFirstName());
+        }
+
+        if (request.getClientLastName() != null) {
+            client.setClientLastName(request.getClientLastName());
+        }
+
+        if (request.getClientDescription() != null) {
+            client.setClientDescription(request.getClientDescription());
+        }
+
+        if (request.getClientMobileNumber() != null) {
+            client.setClientMobileNumber(request.getClientMobileNumber());
+        }
+
+        if (request.getNextSettlementDate() != null) {
+            client.setNextSettlementDate(request.getNextSettlementDate());
+        }
 
         Client updatedClient = clientRepository.save(client);
 
