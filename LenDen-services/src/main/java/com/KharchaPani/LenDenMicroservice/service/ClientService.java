@@ -7,12 +7,10 @@ import com.KharchaPani.LenDenMicroservice.enums.ClientStatus;
 import com.KharchaPani.LenDenMicroservice.exception.ResourceNotFoundException;
 import com.KharchaPani.LenDenMicroservice.repository.ClientRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static java.util.UUID.randomUUID;
@@ -43,13 +41,12 @@ public class ClientService {
     }
 
     public Client getClientById(UUID clientId, UUID userId){
-        Client client = clientRepository
+        return clientRepository
                 .findByIdAndUserId(clientId,userId)
                 .orElseThrow(
                         ()-> new ResourceNotFoundException(
                                 "Client not found"
                         ));
-        return client;
     }
 
     public ResponseEntity<Client> updateClient(ClientUpdateRequest request, UUID clientId){

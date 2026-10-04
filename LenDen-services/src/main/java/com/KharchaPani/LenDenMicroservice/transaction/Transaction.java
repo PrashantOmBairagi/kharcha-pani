@@ -6,7 +6,7 @@ import com.KharchaPani.LenDenMicroservice.enums.TransactionType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.data.annotation.Id;
+import org.hibernate.mapping.PrimaryKey;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,6 +19,7 @@ import java.util.UUID;
 public class Transaction {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "transaction_id", updatable = false, nullable = false)
     private UUID id;
 
     private UUID userId;
@@ -31,6 +32,7 @@ public class Transaction {
 
     private String description;
 
+    @Enumerated(EnumType.STRING)
     private TransactionType transactionType;
 
     @ManyToOne(
