@@ -6,8 +6,10 @@ import com.KharchaPani.LenDenMicroservice.client.ClientUpdateRequest;
 import com.KharchaPani.LenDenMicroservice.enums.ClientStatus;
 import com.KharchaPani.LenDenMicroservice.exception.ResourceNotFoundException;
 import com.KharchaPani.LenDenMicroservice.repository.ClientRepository;
+import com.KharchaPani.LenDenMicroservice.security.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -20,11 +22,12 @@ import static java.util.UUID.randomUUID;
 public class ClientService {
 
     private final ClientRepository clientRepository;
+    private final AuthService authService;
 
-    public Client createClient(ClientRequest request, UUID userId){
+    public Client createClient(ClientRequest request){
 
         Client client = new Client();
-        client.setUserId(userId);
+        client.setUserId(authService.getCurrentUserId());
         client.setClientFirstName(request.getClientFirstName());
         client.setClientLastName(request.getClientLastName());
         client.setClientDescription(request.getClientDescription());
@@ -36,11 +39,13 @@ public class ClientService {
         return clientRepository.save(client);
     }
 
-    public List<Client> getAllClients(UUID userId){
+    public List<Client> getAllClients(){
+        UUID userId = authService.getCurrentUserId();
         return clientRepository.findAllByUserId(userId);
     }
 
-    public Client getClientById(UUID clientId, UUID userId){
+    public Client getClientById(UUID clientId){
+        UUID userId = authService.getCurrentUserId();
         return clientRepository
                 .findByIdAndUserId(clientId,userId)
                 .orElseThrow(
@@ -50,7 +55,7 @@ public class ClientService {
     }
 
     public ResponseEntity<Client> updateClient(ClientUpdateRequest request, UUID clientId){
-        UUID userId = randomUUID();
+        UUID userId = authService.getCurrentUserId();
         Client client = clientRepository
                 .findByIdAndUserId(clientId,userId)
                 .orElseThrow(
@@ -76,14 +81,15 @@ public class ClientService {
         return ResponseEntity.ok(client);
     }
 
-    public ResponseEntity<String> deleteClient(UUID clientId , UUID userId) {
-       Client client = clientRepository
+    public ResponseEntity<String> deleteClient(UUID clientId) {
+        UUID userId = authService.getCurrentUserId();
+        Client client = clientRepository
                .findByIdAndUserId(clientId,userId)
                .orElseThrow(
                        ()-> new ResourceNotFoundException(
                                "Client not found"
                        ));
-       clientRepository.delete(client);
-       return ResponseEntity.ok().body("Client deleted");
+        clientRepository.delete(client);
+        return ResponseEntity.ok().body("Client deleted");
     }
 }

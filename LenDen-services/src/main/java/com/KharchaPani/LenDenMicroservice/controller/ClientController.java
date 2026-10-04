@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RequiredArgsConstructor
-@RestController()
+@RestController
 @RequestMapping("api/v2/lenden/client")
 public class ClientController {
 
@@ -26,32 +26,30 @@ public class ClientController {
 
     @PostMapping()
     public ResponseEntity<Client> registerClient(
-            @Valid @RequestBody ClientRequest request,
-            UUID userId
+            @Valid @RequestBody ClientRequest request
         ){
-        Client createdClient = clientService.createClient(request,userId);
+        Client createdClient = clientService.createClient(request);
         return ResponseEntity.ok().body(createdClient);
     }
 
     @GetMapping()
     public ResponseEntity<List<Client>> getAllClients(){
-        UUID userId = null;
-        List<Client> clients = clientService.getAllClients(userId);
+        List<Client> clients = clientService.getAllClients();
         return ResponseEntity.ok().body(clients);
     }
 
     @GetMapping()
-    public Client getClientById(UUID clientId,UUID userId){
-        return clientService.getClientById(clientId,userId);
+    public Client getClientById(UUID clientId){
+        return clientService.getClientById(clientId);
     }
 
     @PatchMapping()
-    public ResponseEntity<Client> updateClient(@Valid ClientUpdateRequest request, @RequestBody UUID clientId){
-        return clientService.updateClient(request,clientId);
+    public ResponseEntity<Client> updateClient(@Valid ClientUpdateRequest request){
+        return clientService.updateClient(request);
     }
 
     @DeleteMapping()
-    public ResponseEntity<String> deleteClient(@RequestBody UUID clientId, UUID userId){
-        return clientService.deleteClient(clientId,userId);
+    public ResponseEntity<String> deleteClient(@RequestBody UUID clientId){
+        return clientService.deleteClient(clientId);
     }
 }
