@@ -1,5 +1,6 @@
 package com.KharchaPani.LenDenMicroservice.security;
 
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,7 +25,11 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                                .anyRequest().authenticated()
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .requestMatchers("/Swagger/**","/swagger-ui/**","/v3/api-docs/**")
+                        .permitAll()
+                        .anyRequest()
+                        .authenticated()
                 ).addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

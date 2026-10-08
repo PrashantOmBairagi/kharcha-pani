@@ -1,5 +1,6 @@
 package com.KharchaPani.LenDenMicroservice.security;
 
+import com.KharchaPani.LenDenMicroservice.exception.UnauthorizedException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -16,7 +17,7 @@ import java.util.function.Function;
 @Service
 public class AuthService {
 
-    @Value("$JWT_ACCESS_SECRET")
+    @Value("${JWT_ACCESS_SECRET}")
     private String accessSecret;
 
     private SecretKey getSecretKey() {
@@ -39,10 +40,9 @@ public class AuthService {
                 .after(new Date());
     }
     public UUID getCurrentUserId() {
-        return (UUID) SecurityContextHolder
-                .getContext()
-                .getAuthentication()
-                .getPrincipal();
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof UUID)) throw new UnauthorizedException("Unauthorized");
+        return (UUID) auth.getPrincipal();
     }
 
 }

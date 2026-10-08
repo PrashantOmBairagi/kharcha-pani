@@ -47,7 +47,7 @@ The Android client consumes these APIs to provide expense tracking, budgeting, a
 
 # 📖 Overview
 
-Smart Finance Tracker started as a simple expense-tracking API and evolved into a multi-user financial backend with authentication, authorization, relational domain modeling, pagination, monthly financial management, Dockerization, and cloud deployment.
+Smart Finance Tracker started as a simple expense-tracking API and evolved into two Spring Boot microservices — **core-services** (auth, expenses, financial months) and **LenDen-services** (borrow/lend ledger) — with authentication, authorization, relational domain modeling, pagination, monthly financial management, Dockerization, and cloud deployment.
 
 The project was built to gain practical experience with real-world backend engineering concepts including:
 
@@ -159,22 +159,37 @@ A financial month contains:
 
 ---
 
+## 🤝 Borrow / Lend Ledger (LenDen-services)
+
+A second microservice (`LenDen-services`, `:8092`, own `lendendb` database) that tracks money lent to / borrowed from people — separate from monthly expenses.
+
+* **Clients** — people you lend to / borrow from (name, phone, notes, next settlement date)
+* **Transactions** — `SENT` (I gave money) / `RECEIVED` (he paid back), amounts, timestamps (`Instant`), descriptions
+* **Ledger balance** — `GET /client/{id}/summary` computes `totalSent`, `totalReceived`, `netAmount`, `RECEIVE`/`GIVE`/`SETTLED` server-side in one aggregate query
+* **Auth reuse** — accepts the core `accessToken` (shared `JWT_ACCESS_SECRET`), no separate login
+* **Ownership checks** — every client/transaction scoped to the authenticated user
+
+---
+
 ## 📡 REST API
 
-### Authentication
+> Ports: `core-services` → `http://localhost:8091`, `LenDen-services` → `http://localhost:8092`. Full contract: [`API_DOCUMENTATION.md`](./API_DOCUMENTATION.md).
+
+### Authentication (core `:8091`)
 ```http
-POST /api/v1/auth/register
-POST /api/v1/auth/login
+POST /api/v1/auth/register   # -> { accessToken, refreshToken, message, profileComplete }
+POST /api/v1/auth/login      # -> same AuthResponse shape
+POST /api/v1/auth/refresh    # { refreshToken } -> { accessToken } (access lives 5-30 min, refresh 10 days)
 ```
 
-### User
+### User (core)
 ```http
-POST   /api/v1/users
 POST   /api/v1/users/complete-profile
 GET    /api/v1/users/profile
 ```
+> No `POST /api/v1/users` — removed. Flow is `register` → `complete-profile` → `profile`.
 
-### Expenses
+### Expenses (core)
 ```http
 POST   /api/v1/expenses
 GET    /api/v1/expenses
@@ -188,7 +203,7 @@ DELETE /api/v1/expenses/{id}
 GET /api/v1/expenses?pageNo=1&pageSize=10&sortBy=expenseDate&sortDir=desc&financialMonthId=uuid
 ```
 
-### Financial Month
+### Financial Month (core)
 ```http
 POST   /api/v1/fmonth                              # Create (201, 409 if exists)
 GET    /api/v1/fmonth/current                      # Current month summary (404 if missing)
@@ -199,9 +214,25 @@ GET    /api/v1/fmonth/{id}/expenses?pageNo=1&pageSize=10
 GET    /api/v1/fmonth/{id}/detail?pageNo=1&pageSize=10  # Summary + breakdown + trend + recent
 ```
 
-* All endpoints JWT-protected, ownership validated
+### LenDen — Borrow/Lend Book (LenDen `:8092`, same core `accessToken`)
+```http
+GET    api/v2/lenden/client/health                 # auth required
+POST   api/v2/lenden/client                        # create client (200)
+GET    api/v2/lenden/client                        # list my clients
+GET    api/v2/lenden/client/{clientId}             # one client (404 if foreign)
+GET    api/v2/lenden/client/{clientId}/summary     # ledger balance {totalSent,totalReceived,netAmount,RECEIVE/GIVE/SETTLED}
+PATCH  api/v2/lenden/client/{clientId}             # partial update (JSON body)
+DELETE api/v2/lenden/client                        # raw UUID in body -> "Client deleted"
+POST   api/v2/lenden/transaction/{clientId}        # create (201; clientId from path)
+GET    api/v2/lenden/transaction/{clientId}?pageNo=1&pageSize=10  # paged list (key "expenses")
+GET    api/v2/lenden/transaction/{transactionId}   # one transaction
+PATCH  api/v2/lenden/transaction/{id}              # update
+DELETE api/v2/lenden/transaction/{id}              # 204
+```
+
+* All endpoints JWT-protected, ownership validated (LenDen reuses the core access token)
 * Error format: `{ "Message": "...", "Status": 404/409/400 }`
-* Swagger UI: `/swagger-ui.html` | OpenAPI spec: `/v3/api-docs`
+* Swagger UI: `:8091/swagger-ui.html` | OpenAPI spec: `/v3/api-docs`
 
 ---
 
@@ -239,6 +270,8 @@ A user can only access resources belonging to their authenticated account.
 
 For example, an authenticated user cannot retrieve, modify, or delete another user's expenses simply by knowing their UUID.
 
+LenDen-services enforces the same rule without its own login — it validates the core-issued access token (shared `JWT_ACCESS_SECRET`) and scopes every client/transaction by the token's user id.
+
 ---
 
 # 🏗 Backend Architecture
@@ -249,23 +282,24 @@ Kharcha Pani Android App
           ▼
       REST APIs
           │
-          ▼
-   Spring Boot Backend
-          │
-    ┌─────┴─────┐
-    │           │
-Security     Controllers
-    │           │
-    └─────┬─────┘
-          ▼
-     Service Layer
-          │
-          ▼
-   JPA / Hibernate
-          │
-          ▼
-        MySQL
+     ┌────┴──────────────────┐
+     ▼                       ▼
+core-services           LenDen-services
+(auth, expenses,          (borrow/lend
+ financial months)         ledger)
+ :8091                     :8092
+     │                       │
+     ▼                       ▼
+Service Layer           Service Layer
+     │                       │
+     ▼                       ▼
+JPA / Hibernate         JPA / Hibernate
+     │                       │
+     ▼                       ▼
+xpensetrackerdb           lendendb
+(MySQL)                   (MySQL)
 ```
+LenDen-services accepts the core-issued JWT access token (shared `JWT_ACCESS_SECRET`) — one login covers both services.
 
 The application follows a layered architecture separating:
 
@@ -306,6 +340,7 @@ FinancialMonth
 ├── year
 ├── month
 ├── budget
+├── monthlyIncome
 ├── user
 └── expenses
 ```
@@ -332,6 +367,37 @@ Expense
 ├── user
 └── financialMonth
 ```
+
+---
+
+## Client (LenDen)
+
+```text
+Client
+├── id (UUID)
+├── userId
+├── clientFirstName / clientLastName
+├── clientMobileNumber
+├── notes
+├── nextSettlementDate
+├── status
+└── transactions
+```
+
+## Transaction (LenDen)
+
+```text
+Transaction
+├── id (UUID)
+├── amount
+├── description
+├── transactionType (SENT / RECEIVED)
+├── dateAndTime (Instant)
+├── userId
+└── client
+```
+
+One user owns many clients; one client has many transactions. All LenDen reads/writes are scoped by `(id, userId)` ownership checks.
 
 ---
 
@@ -420,7 +486,10 @@ GET /api/v1/expenses?pageNo=1&pageSize=10&sortBy=expenseDate&sortDir=desc
 
 Spring Data's `Pageable` and `Page` abstractions handle pagination at the repository/service layer.
 
-**Pagination style:** 1-based `pageNo` / `pageSize` (default 10, max 50) — used by both expense and financial-month endpoints. Spring `Page` returned directly (no custom wrapper).
+**Pagination style:** 1-based `pageNo` / `pageSize` (default 10, max 50) — used by expense, financial-month, and LenDen transaction endpoints.
+
+- `GET /api/v1/expenses` and LenDen transaction list return a **custom wrapper** (`{ expenses|transactions, currentPage, totalPages, totalElements, hasNext, hasPrevious }`, 1-based `currentPage`).
+- `GET /api/v1/fmonth/list` and `GET /api/v1/fmonth/{id}/expenses` return a **raw Spring Data `Page`** (0-based `number` / `pageable.pageNumber`).
 
 This allows the backend to scale better as a user's expense history grows.
 
@@ -448,7 +517,7 @@ This allows the backend to scale better as a user's expense history grows.
 
 # 🐳 Docker
 
-The backend is containerized using Docker.
+The backend is containerized using Docker (`core-services/Dockerfile`; `LenDen-services` has no Dockerfile yet and runs locally on `:8092`).
 
 ### Build
 
@@ -459,7 +528,8 @@ docker build -t smart-finance-tracker .
 ### Run locally
 
 ```bash
-docker run -p 8080:8080 smart-finance-tracker
+docker run -p 8091:8091 smart-finance-tracker
+# LenDen-services runs on 8092 locally (server.port = 8092)
 ```
 
 The same containerized application is deployed to AWS EC2.
@@ -624,6 +694,7 @@ Ownership checks in service layer (not just controller) — `getFinancialMonthBy
 - Dockerized and deployed the backend on **AWS EC2 with cloud networking**
 - **OpenAPI/Swagger** documentation (`/swagger-ui.html`, `/v3/api-docs`)
 - **FMONTH_REQUIRED** structured error contract (400 with year/month/code)
+- **LenDen-services microservice** — borrow/lend ledger (clients, SENT/RECEIVED transactions, server-side balance summary) reusing the core JWT
 
 ### 🟡 In Progress
 
@@ -639,7 +710,6 @@ Ownership checks in service layer (not just controller) — `getFinancialMonthBy
 
 - Email Verification & OTP Authentication
 - Advanced Expense Filtering & Dedicated Analytics APIs
-- Borrow & Lend Tracking
 - Full Integration Test Infrastructure (`@SpringBootTest`, Testcontainers)
 ---
 
@@ -660,6 +730,7 @@ Ownership checks in service layer (not just controller) — `getFinancialMonthBy
 * Docker Containerization
 * AWS EC2 Deployment
 * Cloud Networking Fundamentals
+* Microservices with shared JWT authentication (core + LenDen)
 * Building and integrating an Android client with a backend API
 
 ---
@@ -684,7 +755,7 @@ Currently focused on:
 ### Connect With Me
 
 * LinkedIn: https://www.linkedin.com/in/prashant-bairagi-kmlpr
-* Portfolio: https://prashant-bairagi-portfolio.vercel.app
+* Portfolio: https://prashantbairagi.tech
 * GitHub: https://github.com/PrashantOmBairagi
 
 ---

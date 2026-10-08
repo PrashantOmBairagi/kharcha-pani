@@ -1,6 +1,7 @@
 package com.KharchaPani.LenDenMicroservice.controller;
 
 import com.KharchaPani.LenDenMicroservice.client.Client;
+import com.KharchaPani.LenDenMicroservice.client.ClientBalanceResponse;
 import com.KharchaPani.LenDenMicroservice.client.ClientRequest;
 import com.KharchaPani.LenDenMicroservice.client.ClientUpdateRequest;
 import com.KharchaPani.LenDenMicroservice.service.ClientService;
@@ -38,14 +39,20 @@ public class ClientController {
         return ResponseEntity.ok().body(clients);
     }
 
-    @GetMapping()
-    public Client getClientById(UUID clientId){
+    @GetMapping("/{clientId}")
+    public Client getClientById(@PathVariable UUID clientId){
         return clientService.getClientById(clientId);
     }
 
-    @PatchMapping()
-    public ResponseEntity<Client> updateClient(@Valid ClientUpdateRequest request){
-        return clientService.updateClient(request);
+    @GetMapping("/{clientId}/summary")
+    public ResponseEntity<ClientBalanceResponse> getClientBalance(@PathVariable UUID clientId){
+        return ResponseEntity.ok(clientService.getClientBalance(clientId));
+    }
+
+    @PatchMapping("/{clientId}")
+    public ResponseEntity<Client> updateClient(@Valid @RequestBody ClientUpdateRequest request, @PathVariable UUID clientId){
+        Client client = clientService.updateClient(request,clientId);
+        return ResponseEntity.ok(client);
     }
 
     @DeleteMapping()

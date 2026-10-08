@@ -1,161 +1,173 @@
 # Kharcha Pani — Backend API Documentation
 
-Complete reference for building the frontend (Android / React Native client) against the backend.
+Complete, code-verified reference for building the frontend client (Android / React Native / web)
+against **both** backend services. Every method, path, status code, and JSON shape below was read
+from the controllers, services, DTOs, and exception handlers — not guessed.
 
-- **Base URL (local)**: `http://localhost:8080`
-- **API prefix**: `/api/v1`
-- **Auth**: JWT Bearer token. All routes under `/api/v1/users`, `/api/v1/expenses`, `/api/v1/fmonth` require `Authorization: Bearer <token>`. `/api/v1/auth/*` and `/api/v1/public/*` are public.
-- **Pagination convention**: 1‑based `pageNo` (default `1`) and `pageSize` (default `10`, **max `50`**, server caps silently).
-- **Money fields**: `BigDecimal` → serialized as JSON **numbers** (e.g. `50000.00` appears as `50000.00`).
-- **Dates**: `LocalDate` → ISO `yyyy-MM-dd`. `createdAt` → ISO date-time.
-- **IDs**: `UUID` → strings.
-- **Enums**: uppercase strings (`FOOD`, `TRAVEL`, ...).
-
----
-
-## 1. Standard error shapes
-
-All errors come from `GlobalExceptionHandler`. Two key things:
-
-1. **JSON keys are capitalized**: `Message` and `Status` (not `message`/`status`).
-2. The one exception is **register duplicate-email**, which returns a lowercase `message` (see Auth).
-
-### 404 — Resource not found
-```json
-{ "Message": "Expense not found", "Status": 404 }
-```
-
-### 409 — Conflict / illegal argument (generic)
-```json
-{ "Message": "Financial month for 2026-9 already exists", "Status": 409 }
-```
-
-### 400 — Bean validation failure (request body failed `@Valid`)
-```json
-{ "Message": "Amount must be positive.", "Status": 400 }
-```
-`Message` is the **first** validation error message.
-
-### 400 — FMONTH_REQUIRED (special)
-Thrown when an expense's date is NOT the current month and there is no financial month for it.
-```json
-{
-  "Message": "Financial month required for 2025-7",
-  "year": 2025,
-  "month": 7,
-  "code": "FMONTH_REQUIRED",
-  "Status": 400
-}
-```
-This is the signal for the mobile app to show "Create financial month?" then retry.
+- **core-services** (auth, users, expenses, financial months): `http://localhost:8091`, prefix `/api/v1`
+- **LenDen-services** (borrow/lend clients + transactions): `http://localhost:8092`, prefix `api/v2/lenden`
+  (the `@RequestMapping` has no leading `/` — behaves identically)
+- **Auth model**: JWT Bearer token issued by **core**. LenDen has NO login/register — log in via core
+  and send the same `accessToken` to both services (both verify with the same `JWT_ACCESS_SECRET` env value).
+  Header on every protected call: `Authorization: Bearer <accessToken>`.
+- **Token lifetimes**: access token default **5 min**, tunable per deploy via `JWT_ACCESS_EXPIRATION`
+  (300000 ms default; 5–30 min is the supported range). Refresh token default **10 days**
+  (`JWT_REFRESH_EXPIRATION: 864000000`). The ONLY refresh endpoint is core's `POST /api/v1/auth/refresh`.
+  Frontend must implement `401/403 → refresh → retry once`.
+- **Conventions for this doc**:
+  - `Auth` column: `PUBLIC` = no header needed, `JWT` = Bearer required.
+  - `UUID` fields are JSON strings. `BigDecimal` money fields are JSON **numbers**. `LocalDate` is
+    ISO `yyyy-MM-dd`. `LocalDateTime` (`createdAt`) is ISO date-time.
+  - Error JSON keys are capitalized `Message` / `Status` — EXCEPT the cases called out per endpoint.
 
 ---
 
-## 2. Auth (public) — `/api/v1/auth`
+## 0. Service map (which backend owns what)
 
-### POST `/api/v1/auth/register`
-Create account and get a token.
+| Capability | Service | Base |
+|---|---|---|
+| Register / login / refresh tokens | core | `:8091/api/v1/auth` |
+| Health / info (public) | core | `:8091/api/v1/public` |
+| User profile + complete-profile | core | `:8091/api/v1/users` |
+| Expenses CRUD + paged list | core | `:8091/api/v1/expenses` |
+| Financial months, budgets, dashboard | core | `:8091/api/v1/fmonth` |
+| Borrow/lend clients CRUD | LenDen | `:8092/api/v2/lenden/client` |
+| Borrow/lend transactions CRUD | LenDen | `:8092/api/v2/lenden/transaction` |
+| LenDen health (**auth required**, unlike core) | LenDen | `:8092/api/v2/lenden/client/health` |
 
-**Request**
+There is NO `POST /api/v1/users` endpoint (older drafts of this doc listed one — it does not exist
+in `UserController`). The user flow is `register → complete-profile → profile`.
+
+---
+
+## 1. Standard error shapes (core)
+
+All core errors come from `GlobalExceptionHandler`. Frontend must branch on the key casing:
+
+| Situation | HTTP | Body |
+|---|---|---|
+| Resource not found | 404 | `{ "Message": "...", "Status": 404 }` |
+| Illegal argument / conflict (dup month, foreign month, bad `pageNo`, `Invalid month`) | 409 | `{ "Message": "...", "Status": 409 }` |
+| Bean validation failure (`@Valid` on body) | 400 | `{ "Message": "<first violation message>", "Status": 400 }` — FIRST message only |
+| Register duplicate email | 400 | `{ "message": "Email already exists! Try Login." }` — lowercase `message`, NOT standard shape |
+| Unauthorized (bad/expired refresh token) | 401 | `{ "Message": "...", "Status": 401 }` |
+| Bad/expired JWT (access token path) | 401 | `{ "Message": "Refresh token expired" }` or `{ "Message": "Invalid refresh token" }`, `Status: 401` |
+| Phone already taken (complete-profile) | 409 | `{ "Message": "This phone number'...' is already linked to another account.", "Status": 409 }` |
+| FMONTH_REQUIRED (expense in a month with no record) | 400 | `{ "Message": "Financial month required for 2025-7", "year": 2025, "month": 7, "code": "FMONTH_REQUIRED", "Status": 400 }` |
+
+Shapes NOT covered by the handler (frontend sees Spring's default
+`{timestamp,status,error,path}` instead of `{Message,Status}`):
+bad-UUID path params, unknown enum values (e.g. bad `category`), missing `by-date` query params,
+and `monthlyIncome: null` on month create (DB non-null → 500 via unhandled path). Validate these
+client-side (rules are listed per endpoint below).
+
+## 1b. Standard error shapes (LenDen)
+
+LenDen's handler covers 404 (`ResourceNotFound`), 409 (generic `IllegalArgumentException`), and 400
+(first validation message) with the same capitalized `{Message,Status}` keys. Differences from core:
+
+- There is NO `UnauthorizedException`/`JwtException` handler — 401s (e.g. bad `getCurrentUserId`)
+  do NOT use `{Message,Status}`; handle any 401 generically (refresh-and-retry, then logout).
+- The `FMONTH_REQUIRED` branch is copied into LenDen's handler but never thrown there — ignore it.
+- `pageSize` is NOT capped server-side — keep it ≤ 50 client-side.
+- `pageNo <= 0` hits the generic handler as **409**, not 400 — validate `pageNo >= 1` client-side.
+
+---
+
+## 2. Auth — `POST :8091/api/v1/auth/*` (PUBLIC)
+
+Shared request type `AuthRequest`:
+
 ```json
-{
-  "email": "user@example.com",
-  "password": "secret123"
-}
+{ "email": "user@example.com", "password": "secret123" }
 ```
-Validation:
-- `email`: required, valid email
-- `password`: required, 6–50 characters
 
-**Response 200**
+Validation (both fields always validated): `email` required + valid email format
+(`"Email is required."` / `"Enter valid Email address."`); `password` required, 6–50 chars
+(`"Password is required."` / `"Password must be 6 or greater."`).
+
+### `POST /api/v1/auth/register`
+
+Creates the account (BCrypt-hashed password, `profileComplete: false`) and returns tokens.
+
+- **Auth:** PUBLIC. **Request:** `AuthRequest`. **Response 200** — `AuthResponse`:
 ```json
 {
-  "token": "<jwt>",
-  "message": "...",
+  "accessToken": "<jwt-access, 5-30 min life>",
+  "refreshToken": "<jwt-refresh, 10 day life>",
+  "message": "Registration Successful",
   "profileComplete": false
 }
 ```
-`profileComplete` tells the client whether to route to the profile-completion flow.
+- **Response 400 duplicate email** (lowercase key): `{ "message": "Email already exists! Try Login." }`
+- Frontend: if `profileComplete == false`, route to the complete-profile screen. Persist BOTH tokens.
 
-**Response 400 — email already exists** (note: lowercase `message`, NOT standard shape)
-```json
-{ "message": "Email already exists! Try Login." }
-```
+### `POST /api/v1/auth/login`
 
-### POST `/api/v1/auth/login`
-**Request** — same `AuthRequest` body as register (`email`, `password`).
+- **Auth:** PUBLIC. **Request:** `AuthRequest` (same shape).
+- **Response 200** — same `AuthResponse` shape, `message: "Login Successful"`,
+  `profileComplete: true/false` depending on the account.
+- **Response 404 unknown email:** `{ "Message": "No account exists with this email. Try signing up.", "Status": 404 }`
+- **Response 404 wrong password:** `{ "Message": "Invalid credentials", "Status": 404 }`
+  (login failures are 404, NOT 401 — and the two messages differ, so don't show them verbatim if
+  you want to avoid account-enumeration hints).
 
-**Response 200**
-```json
-{
-  "token": "<jwt>",
-  "message": "...",
-  "profileComplete": boolean
-}
-```
+### `POST /api/v1/auth/refresh`
 
-**Response 404 — login failure** (still 404, not 401)
+Mints a fresh access token. PUBLIC (no header). **The only refresh endpoint — LenDen has none.**
 
-Email not in DB:
-```json
-{ "Message": "No account exists with this email. Try signing up.", "Status": 404 }
-```
-
-Wrong password:
-```json
-{ "Message": "Invalid credentials", "Status": 404 }
-```
-
+- **Request** `RefreshTokenRequest`: `{ "refreshToken": "<jwt-refresh>" }` (required, `@NotBlank`).
+- **Response 200** `RefreshResponse`: `{ "accessToken": "<new-jwt-access>" }`
+- **Response 401:** `{ "Message": "Refresh token expired", "Status": 401 }` (expired) or
+  `{ "Message": "Invalid refresh token", "Status": 401 }` (malformed/wrong-secret).
+- **Response 404:** `{ "Message": "User Not Found or Token is broken", "Status": 404 }`
+  (user deleted since login).
+- Frontend: on any API `401/403`, call this once with the stored refresh token, swap the access
+  token, retry the original call once. If refresh itself fails → force logout.
 
 ---
 
-## 3. Public — `/api/v1/public`
+## 3. Public — `GET :8091/api/v1/public/*` (PUBLIC)
 
-### GET `/api/v1/public/health`
-- No auth.
-- **Response 200**: plain body `"OK"`.
+### `GET /api/v1/public/health`
+- **Auth:** PUBLIC. **Response 200:** plain body `"OK"` (JSON string). Use for uptime checks.
 
-### GET `/api/v1/public/info`
-- No auth.
-- **Response 200**:
+### `GET /api/v1/public/info`
+- **Auth:** PUBLIC. **Response 200:**
 ```json
 {
-  "application": "Smart Finance Tracker",
-  "version": "2.0",
-  "status": "ACTIVE",
-  "timestamp": "Tue Sep 02 ...",
-  "Author": "Prashant Bairagi"
+  "application": "KHARCHA PANI - India's new finance buddy",
+  "version": "v3.0",
+  "status": "DEV-ACTIVE",
+  "timestamp": "Tue Oct 06 ...",
+  "Author": "Prashant Bairagi",
+  "Portfolio": "https://prashant-bairagi-portfolio.vercel.app"
 }
 ```
 
 ---
 
-## 4. User — `/api/v1/users` (auth required)
+## 4. Users — `:8091/api/v1/users` (JWT)
 
-### POST `/api/v1/users/complete-profile`
-Complete the profile after registration (sets first/last name, phone, budget; marks `profileComplete = true`).
+### `POST /api/v1/users/complete-profile`
+Completes the profile after registration (sets names/phone/budget, flips `profileComplete` to `true`).
 
-**Request**
+- **Auth:** JWT. **Response 200:** EMPTY body. Re-read `GET /users/profile` (or re-login) to see the result.
+- **Request** `CompleteProfileRequest` — ALL fields are nullable at the validation layer,
+  so the frontend MUST send real values (sending `{}` returns 200 but marks a blank profile complete):
 ```json
 {
-  "firstName": "Prashant",
-  "lastName": "Bairagi",
-  "phone": "9876543210",
-  "budget": 30000
+  "firstName": "Prashant",   // optional in code, but send it: 3-20 chars when present
+  "lastName": "Bairagi",     // optional in code, max 20 chars when present
+  "phone": "9876543210",     // optional in code, but must match ^[6-9][0-9]{9}$ when present
+  "budget": 30000            // optional in code, integer >= 0 when present (Long, NOT decimal)
 }
 ```
-Validation:
-- `firstName`: 3–20 characters
-- `lastName`: max 20 characters
-- `phone`: `^[6-9][0-9]{9}$` (10-digit Indian mobile)
-- `budget`: `Long`, must be >= 0
+- **Response 409 phone taken:** `{ "Message": "This phone number'...' is already linked to another account.", "Status": 409 }`
+- Flow: `register` (profileComplete=false) → this call → `profileComplete=true`.
 
-**Response 200**: empty body. (No response payload — check `profileComplete` from a subsequent `GET /users/profile` or by another login.)
-
-### GET `/api/v1/users/profile`
-Fetch the current user's profile.
-
-**Response 200** — `UserResponse`:
+### `GET /api/v1/users/profile`
+- **Auth:** JWT. **Response 200** — `UserResponse` (never contains `password`):
 ```json
 {
   "id": "<uuid>",
@@ -164,76 +176,60 @@ Fetch the current user's profile.
   "lastName": "Bairagi",
   "phone": "9876543210",
   "budget": 30000,
-  "createdAt": "2026-09-02T12:00:00",
+  "createdAt": "2026-10-06T20:42:30.231715",
   "profileComplete": true
 }
 ```
-> ✅ Password leak fixed (2026-09-02): endpoint now returns `UserResponse`, NOT the raw `User` entity — `password` is never serialized.
-
-### POST `/api/v1/users` (create raw user)
-- Auth required.
-- Body: a raw `User` entity (see `GET /profile` shape). Echoes back a `UserResponse` (same shape as `/profile` — no `password`) with HTTP 200.
-- **Do not use from the app** — exists for admin/backend use. `register` + `complete-profile` is the app flow.
+- Unfinished profiles return the same shape with `null` names/phone/budget and
+  `profileComplete: false`. `budget` is an integer (`Long`).
 
 ---
 
-## 5. Expenses — `/api/v1/expenses` (auth required)
+## 5. Expenses — `:8091/api/v1/expenses` (JWT)
 
-`ExpenseResponse` (shared):
+Shared type `ExpenseResponse`:
 ```json
 {
   "id": "<uuid>",
   "description": "Chai + samosa",
   "amount": 45.00,
   "category": "FOOD",
-  "expenseDate": "2026-09-02",
+  "expenseDate": "2026-10-06",
   "userId": "<uuid>"
 }
 ```
+Valid `category` values: `FOOD, TRAVEL, SHOPPING, BILLS, HEALTH, ENTERTAINMENT, EDUCATION, OTHER`
+(anything else → unhandled Spring default error shape, NOT `{Message,Status}` — use a dropdown).
 
-### POST `/api/v1/expenses`
-Create an expense.
-
-**Request**
+### `POST /api/v1/expenses` → 201
+- **Request** `ExpenseRequest`:
 ```json
 {
-  "description": "Chai + samosa",
-  "category": "FOOD",
-  "amount": 45.00,
-  "expenseDate": "2026-09-02",
-  "financialMonthId": "<uuid>"   // optional
+  "description": "Chai + samosa",  // optional, BUT keep <= 100 chars (no create-side cap; longer strings 500)
+  "category": "FOOD",              // required, enum above
+  "amount": 45.00,                 // required, positive number
+  "expenseDate": "2026-10-06",     // required, yyyy-MM-dd, never in the future
+  "financialMonthId": "<uuid>"     // optional
 }
 ```
-Validation:
-- `description`: optional, max 100 chars (write path)
-- `category`: required, one of `FOOD TRAVEL SHOPPING BILLS HEALTH ENTERTAINMENT EDUCATION OTHER`
-- `amount`: required, positive
-- `expenseDate`: required, cannot be in the future (`@PastOrPresent`)
-- `financialMonthId`: optional
+- Behavior: with `financialMonthId`, it must belong to the caller (else **409**). Without it, the
+  server uses the month of `expenseDate`: current month → **auto-created** (budget = previous month's
+  budget or `0`, `monthlyIncome = 0`); any other month without a record → **400 FMONTH_REQUIRED**
+  `{Message,year,month,code,Status}` (see §1) — show the "Create this month?" dialog, then
+  `POST /fmonth {budget, monthlyIncome, year, month}` with the returned year/month, then retry.
+- **Response 201** — `ExpenseResponse`.
 
-Behavior:
-- If `financialMonthId` given, it must belong to the current user (else 409).
-- If omitted, the server **auto-creates** a financial month for the **current** month (budget inherits previous month's budget, `monthlyIncome = 0`).
-- If the expense date is a different month → **400 FMONTH_REQUIRED** (see §1). This is the trigger for the "Start a new month" dialog.
-
-**Response 201** — `ExpenseResponse`.
-
-### GET `/api/v1/expenses`
-List expenses (paginated, sortable, filterable by month).
-
-**Query params**
-| param | default | allowed |
+### `GET /api/v1/expenses` → 200 (custom 1-based page)
+| param | default | rule |
 |---|---|---|
-| `pageNo` | `1` | 1-based |
-| `pageSize` | `10` | max 50 |
-| `sortBy` | `expenseDate` | `expenseDate`, `amount`, `category`, `createdAt`, `updatedAt` (anything else falls back to `expenseDate`) |
-| `sortDir` | `desc` | `asc`, `desc` |
-| `financialMonthId` | — (optional) | filters to one month |
-
-**Response 200** — custom page (NOT a Spring Page):
+| `pageNo` | `1` | 1-based; `0`/negative → 409, validate client-side |
+| `pageSize` | `10` | server caps with `min(pageSize,50)` — silently capped, no error |
+| `sortBy` | `expenseDate` | whitelist `expenseDate, amount, category, createdAt, updatedAt`; anything else falls back to `expenseDate` |
+| `sortDir` | `desc` | `asc` (any case) → ASC, everything else → DESC |
+| `financialMonthId` | — | optional UUID filter for one month |
 ```json
 {
-  "expenses": [ ...ExpenseResponse ],
+  "expenses": [ { "...ExpenseResponse..." } ],
   "currentPage": 1,
   "totalPages": 5,
   "totalElements": 43,
@@ -242,211 +238,312 @@ List expenses (paginated, sortable, filterable by month).
 }
 ```
 
-### GET `/api/v1/expenses/{id}`
-Fetch one expense.
-- **Response 200** — `ExpenseResponse`.
-- **Response 404** — `{ "Message": "Expense not found", "Status": 404 }`.
+### `GET /api/v1/expenses/{id}` → 200 | 404 `{Message:"Expense not found",Status:404}`
+Foreign ids also 404 (ownership-checked, safe to treat as "not found").
 
-### PUT `/api/v1/expenses/{id}`
-Update an expense. **Method is PUT.**
-
-**Request** — `ExpenseUpdateRequest` (note: does NOT accept `financialMonthId`; sending it will 400 because no unknown-property tolerance)
+### `PUT /api/v1/expenses/{id}` → 200 plain string (NOT an object)
+- **Request** `ExpenseUpdateRequest` — same rules as create EXCEPT: `description` capped at 100
+  chars, and `financialMonthId` is NOT accepted (unknown-property → 400):
 ```json
-{
-  "description": "Updated chai",
-  "category": "FOOD",
-  "amount": 50.00,
-  "expenseDate": "2026-09-02"
-}
+{ "description": "Updated chai", "category": "FOOD", "amount": 50.00, "expenseDate": "2026-10-06" }
 ```
-Validation: `description` max 100; `amount` required positive; `category` required; `expenseDate` required, not future.
+- **Response 200 body:** `"Expense Updated Successfully"` (a JSON string). **404** if missing/foreign.
+- Note: updating `expenseDate` across months does NOT move the expense to another month — keep edits
+  within the same month or delete + recreate.
 
-**Response 200** — plain JSON string:
-```json
-"Expense Updated Successfully"
-```
-**Response 404** if not found / not owned.
-
-### DELETE `/api/v1/expenses/{id}`
-Delete an expense.
-- **Response 200** — plain JSON string:
-```json
-"Expense deleted"
-```
-- **Response 404** if not found / not owned.
+### `DELETE /api/v1/expenses/{id}` → 200 plain string `"Expense deleted"` | 404.
 
 ---
 
-## 6. Financial Month — `/api/v1/fmonth` (auth required)
+## 6. Financial months — `:8091/api/v1/fmonth` (JWT)
 
-`FinancialMonthSummaryResponse` (shared):
+Shared type `FinancialMonthSummaryResponse`:
 ```json
 {
   "id": "<uuid>",
   "year": 2026,
-  "month": 9,
+  "month": 10,
   "budget": 30000.00,
   "monthlyIncome": 50000.00,
   "totalSpent": 4520.00,
   "remaining": 25480.00,
   "expenseCount": 12,
-  "lastExpenseDate": "2026-09-02"
+  "lastExpenseDate": "2026-10-06"
 }
 ```
-> `remaining = budget − totalSpent` — can be **negative** when over budget (client must not clamp blindly if it wants to show "over budget").
+`remaining = budget − totalSpent` and CAN be negative (over budget — render it, don't clamp).
 
-### POST `/api/v1/fmonth`
-Create a financial month manually.
-
-**Request**
+### `POST /api/v1/fmonth` → 201 (manual month create)
 ```json
 {
-  "budget": 30000.00,
-  "monthlyIncome": 50000.00,
-  "year": 2026,
-  "month": 9
+  "budget": 30000.00,        // required, >= 0
+  "monthlyIncome": 50000.00,  // REQUIRED IN PRACTICE: DTO says optional, but the DB column is
+                             // NOT NULL — omitting it 500s. Always send a number (0 if none).
+  "year": 2026,               // required, 2000-2050
+  "month": 10                 // required, 1-12
 }
 ```
-Validation:
-- `budget`: required, >= 0
-- `monthlyIncome`: optional, >= 0
-- `year`: required, 2000–2050
-- `month`: required, 1–12
+- **Response 201** — fresh `FinancialMonthSummaryResponse` (all totals zero).
+- **Response 409** dup: `{ "Message": "Financial month for 2026-10 already exists", "Status": 409 }`.
 
-**Response 201** — `FinancialMonthSummaryResponse` (fresh summary).
-**Response 409** — if that `year`+`month` already exists for this user:
-```json
-{ "Message": "Financial month for 2026-9 already exists", "Status": 409 }
-```
+### `PATCH /api/v1/fmonth/{id}/budget` → 200
+- **Request:** `{ "budget": 35000.00 }` (required, >= 0 — only the budget is editable here).
+- **Response 200** — updated summary. **Missing/foreign id → 409**
+  `{ "Message": "Financial month not found: <id>", "Status": 409 }` (note: 409, not 404).
 
-### PATCH `/api/v1/fmonth/{id}/budget`
-Update just the budget.
+### `GET /api/v1/fmonth/current` → 200 | 404
+Current calendar month's summary. **404** `{ "Message": "Financial month not found for 2026-10", "Status": 404 }`
+means "no data yet" — render the zero state, and note this GET never auto-creates (only `POST /expenses` does).
 
-**Request**
-```json
-{ "budget": 35000.00 }
-```
-Validation: `budget` required, >= 0.
+### `GET /api/v1/fmonth/by-date?year=2026&month=8` → 200 | 404 | 409
+- `year` + `month` are REQUIRED ints. `month` outside 1–12 → **409** `{ "Message": "Invalid month: 13", "Status": 409 }`.
+- Month missing → **404**. (Omitting a param yields Spring's default error shape, not `{Message,Status}` —
+  always send both.)
 
-**Response 200** — `FinancialMonthSummaryResponse` (updated).
-**Response 409** — if month not found / not owned:
-```json
-{ "Message": "Financial month not found: <id>", "Status": 409 }
-```
-
-### GET `/api/v1/fmonth/current`
-Current month's summary.
-- **Response 200** — `FinancialMonthSummaryResponse`.
-- **Response 404** — no current month yet: `{ "Message": "Financial month not found for 2026-9", "Status": 404 }` (read-only; GET never auto-creates).
-
-### GET `/api/v1/fmonth/by-date`
-Summary for a specific year/month.
-```
-GET /api/v1/fmonth/by-date?year=2026&month=8
-```
-- **Response 200** — `FinancialMonthSummaryResponse`.
-- **Response 404** — month missing: `{ "Message": "Financial month not found for 2026-8", "Status": 404 }`.
-- **Response 409** — `month` outside 1–12: `{ "Message": "Invalid month: 13", "Status": 409 }`.
-
-### GET `/api/v1/fmonth/list`
-Paginated history of all months for the user (newest first: year desc, then month desc).
-
-**Query params**: `pageNo` (default 1), `pageSize` (default 10, max 50).
-
-**Response 200** — **raw Spring Data `Page`**:
+### `GET /api/v1/fmonth/list?pageNo=1&pageSize=10` → 200 raw Spring `Page`
+Newest first (year desc, month desc). `pageSize` capped at 50 server-side. Unlike the expenses page,
+this is a RAW Spring Data page — pagination fields are **0-based** (`number`, `pageable.pageNumber`):
 ```json
 {
-  "content": [ ...FinancialMonthSummaryResponse ],
-  "pageable": {
-    "sort": { "sorted": true, "unsorted": false, "empty": false },
-    "pageNumber": 0,
-    "pageSize": 10,
-    "offset": 0,
-    "paged": true,
-    "unpaged": false
-  },
-  "totalElements": 3,
-  "totalPages": 1,
-  "last": true,
-  "first": true,
-  "sort": { "sorted": true, "unsorted": false, "empty": false },
-  "number": 0,
-  "size": 10,
-  "numberOfElements": 3,
-  "empty": false
+  "content": [ { "...FinancialMonthSummaryResponse..." } ],
+  "totalElements": 3, "totalPages": 1, "number": 0, "size": 10,
+  "first": true, "last": true, "numberOfElements": 3, "empty": false,
+  "pageable": { "pageNumber": 0, "pageSize": 10, "offset": 0, "paged": true, "unpaged": false,
+                "sort": { "sorted": true, "unsorted": false, "empty": false } }
 }
 ```
-> ⚠️ Pagination fields are **0-based** here (`number`, `pageable.pageNumber`) — different from the custom expenses page which is 1-based (`currentPage`).
 
-### GET `/api/v1/fmonth/{id}/expenses`
-Paginated expenses belonging to one month.
+### `GET /api/v1/fmonth/{id}/expenses?pageNo=1&pageSize=10` → 200 raw Spring `Page<ExpenseResponse>`
+Same raw-page shape with `content` = `ExpenseResponse[]`, sorted `expenseDate` desc.
+Missing/foreign month → **409**.
 
-**Query params**: `pageNo`, `pageSize` (same defaults/cap).
-
-**Response 200** — **raw Spring Data `Page`** with `content` = array of `ExpenseResponse` (same shape as above). Sorted `expenseDate` desc.
-**Response 409** — month not found / not owned.
-
-### GET `/api/v1/fmonth/{id}/detail`
-Full dashboard payload for one month (summary + breakdowns + recent expenses).
-
-**Query params**: `pageNo`, `pageSize` (same defaults/cap) — `pageSize` controls how many `recentExpenses` come back.
-
-**Response 200** — `FinancialMonthDetailResponse`:
+### `GET /api/v1/fmonth/{id}/detail?pageNo=1&pageSize=10` → 200 dashboard payload
 ```json
 {
-  "summary": { ...FinancialMonthSummaryResponse },
+  "summary": { "...FinancialMonthSummaryResponse..." },
   "categoryBreakdown": [
-    { "category": "FOOD", "total": 2200.00, "percentage": 48.7 },
-    { "category": "TRAVEL", "total": 1500.00, "percentage": 33.2 }
+    { "category": "FOOD", "total": 2200.00, "percentage": 48.7 }
   ],
   "dailyTrend": [
-    { "date": "2026-09-01", "total": 0.00 },
-    { "date": "2026-09-02", "total": 820.00 }
+    { "date": "2026-10-01", "total": 0.00 },
+    { "date": "2026-10-06", "total": 820.00 }
   ],
-  "recentExpenses": [ ...ExpenseResponse ]
+  "recentExpenses": [ { "...ExpenseResponse..." } ]
 }
 ```
-- `categoryBreakdown`: sorted by `total` desc; `percentage` rounded to 1 decimal; `0.0` when nothing spent.
-- `dailyTrend`: one entry for **every day** of the month — zero-filled (`0.00`) for days with no expenses; for the current month it stops at **today** (does not include future days).
-- `recentExpenses`: sorted `expenseDate` desc then `createdAt` desc, limited to `pageSize`.
-
-**Response 409** — month not found / not owned.
+- `categoryBreakdown`: sorted by `total` desc; `percentage` 1-decimal (`0.0` when nothing spent).
+- `dailyTrend`: one entry per day, zero-filled; current month stops at TODAY (no future days).
+- `recentExpenses`: `expenseDate` desc then `createdAt` desc, limited to **`pageSize` only —
+  `pageNo` is IGNORED** (dead param, any value behaves the same).
+- Missing/foreign month → **409**.
 
 ---
 
-## 7. Frontend cheat-sheet (how the screens map to endpoints)
+## 7. LenDen clients — `:8092/api/v2/lenden/client` (JWT, core token)
+
+`Client` is returned as the raw entity (no DTO). `transactions` is always omitted (`@JsonIgnore`) —
+call the transaction list per client for balances (there is no balance/summary endpoint; aggregate client-side).
+
+```json
+{
+  "id": "<uuid>",
+  "userId": "<uuid>",
+  "clientFirstName": "Rahul",
+  "clientLastName": "Sharma",
+  "clientMobileNumber": "9876543210",
+  "clientDescription": "College friend",
+  "clientStatus": "ACTIVE",
+  "clientAlertsActive": false,
+  "nextSettlementDate": "2026-10-15"
+}
+```
+`clientStatus` is always `ACTIVE` on create (enum also has `INACTIVE, DEFAULTER, INFORMAL, DELETED`
+but nothing transitions it — treat as display-only). `clientAlertsActive` is always `false` on create
+and not editable. No uniqueness on phone/name — duplicates allowed.
+
+### `GET /api/v2/lenden/client/health` → 200 (JWT REQUIRED)
+Unlike core's public health, this needs the Bearer token (no token → 403). Body `"OK"`.
+
+### `POST /api/v2/lenden/client` → 200 (NOT 201)
+```json
+{
+  "clientFirstName": "Rahul",        // 3-20 chars WHEN SENT (null passes validation — always send it)
+  "clientLastName": "Sharma",        // max 20 chars when sent
+  "clientMobileNumber": "9876543210",// must match ^[6-9][0-9]{9}$ when sent
+  "clientDescription": "College friend", // max 200 chars when sent
+  "nextSettlementDate": "2026-10-15" // free date, optional
+}
+```
+- Validation annotations ignore `null` (no `@NotNull`), so send every field you want stored.
+- **Response 200** — created `Client`.
+
+### `GET /api/v2/lenden/client` → 200 `Client[]` (own clients only).
+
+### `GET /api/v2/lenden/client/{clientId}` → 200 `Client` | 404 `{Message:"Client not found",Status:404}`
+Foreign ids → 404. Note: raw `Client` return (not wrapped in ResponseEntity — same JSON either way).
+
+### `GET /api/v2/lenden/client/{clientId}/summary` → 200 | 404
+Per-client ledger balance, computed server-side in one aggregate query (no stored column, never drifts).
+`SENT` = money I gave him, `RECEIVED` = money he gave back. `netAmount = |totalSent − totalReceived|`.
+- **Response 200** — `ClientBalanceResponse`:
+```json
+{
+  "clientId": "<uuid>",
+  "totalSent": 5000.00,
+  "totalReceived": 2000.00,
+  "netAmount": 3000.00,
+  "balanceStatus": "RECEIVE",
+  "transactionCount": 3
+}
+```
+- `balanceStatus`: `RECEIVE` = he owes me (`sent > received`), `GIVE` = I owe him
+  (`received > sent`), `SETTLED` = even (including ledgers with zero transactions, all zeros).
+- **Response 404** `{ "Message": "Client not found", "Status": 404 }` if missing/foreign.
+- Frontend: render `netAmount` with the status tag ("You receive ₹3,000" / "You give ₹3,000" /
+  "Settled") instead of summing transaction pages.
+
+### `PATCH /api/v2/lenden/client/{clientId}` → 200 updated `Client` | 404
+`ClientUpdateRequest` — every field optional; ONLY non-null fields are applied (partial update):
+```json
+{
+  "clientFirstName": "Rahul",
+  "clientLastName": null,
+  "clientMobileNumber": null,
+  "clientDescription": "Updated note",
+  "nextSettlementDate": "2026-11-01"
+}
+```
+Same length/pattern rules as create. `clientStatus`/`clientAlertsActive` cannot be changed here.
+
+### `DELETE /api/v2/lenden/client` → 200 `"Client deleted"` | 404
+Takes the **raw UUID as a JSON string in the request BODY** (no path id):
+```json
+"3fa85f64-5717-4562-b3fc-2c963f66afa6"
+```
+Response is the plain string `"Client deleted"`. 404 if missing/foreign.
+WARNING: deleting a client cascade-deletes ALL its transactions (no balance guard) — confirm in UI.
+
+---
+
+## 8. LenDen transactions — `:8092/api/v2/lenden/transaction` (JWT, core token)
+
+Shared type `TransactionResponse`:
+```json
+{
+  "id": "<uuid>",
+  "userId": "<uuid>",
+  "clientId": "<uuid>",
+  "amount": 1500.00,
+  "dateAndTime": "2026-10-06",
+  "description": "Lent for books",
+  "transactionType": "SENT"
+}
+```
+`transactionType`: `RECEIVED, SENT`. `dateAndTime` is a `LocalDate` (date only, despite the name).
+`TransactionRequest` has NO validation and the controller has no `@Valid` — the frontend MUST validate:
+`amount` present (send positive), `dateAndTime` present, `transactionType` present. Nulls persist and
+break later math.
+
+### `POST /api/v2/lenden/transaction/{clientId}` → 201
+`clientId` comes from the **PATH** — a `clientId` field inside the JSON body (if sent) is IGNORED:
+```json
+{ "amount": 1500.00, "dateAndTime": "2026-10-06", "description": "Lent for books", "transactionType": "SENT" }
+```
+Foreign/unknown `clientId` → **404** `{ "Message": "Client not found", "Status": 404 }`
+(ownership-checked — writing into another user's client is impossible).
+
+### `GET /api/v2/lenden/transaction/{transactionId}` → 200 | 404 `{Message:"Couldn't find Transaction!!",Status:404}`
+
+### `PATCH /api/v2/lenden/transaction/{id}` → 200 | 404 (same message)
+Same body shape as create. Only amount/date/description/type change — the client association is fixed.
+
+### `DELETE /api/v2/lenden/transaction/{id}` → 204 (no usable body) | 404
+Deletes via find-then-delete (ownership-checked; foreign ids → 404 `"Couldn't find Transaction!!"`).
+The code sends status 204 with a `"Delete Success!!"` string, but HTTP forbids bodies on 204 —
+**treat 204 as success and parse no body**.
+
+### `GET /api/v2/lenden/transaction/all/{clientId}?pageNo=1&pageSize=10&sortBy=dateAndTime&sortDir=desc` → 200
+| param | default | rule |
+|---|---|---|
+| `pageNo` | `1` | 1-based; `0`/negative → 409 |
+| `pageSize` | `10` | NOT capped server-side — keep ≤ 50 |
+| `sortBy` | `dateAndTime` | whitelist `dateAndTime, amount`, else `dateAndTime` |
+| `sortDir` | `desc` | `asc` → ASC, else DESC |
+```json
+{
+  "expenses": [ { "...TransactionResponse..." } ],
+  "currentPage": 1, "totalPages": 3, "totalElements": 25,
+  "hasNext": true, "hasPrevious": false
+}
+```
+The list key is literally `"expenses"` (copy-paste from core) — parse it as the transaction list.
+
+---
+
+## 9. Auth wiring across services (read this once)
+
+| Item | core `:8091` | LenDen `:8092` |
+|---|---|---|
+| Login / register / refresh | `POST /api/v1/auth/*` | none — reuse core token |
+| Health | `GET /api/v1/public/health` PUBLIC | `GET /api/v2/lenden/client/health` JWT required |
+| Swagger | `:8091/swagger-ui.html`, `/v3/api-docs` PUBLIC | same paths permitted (+ a dead `/Swagger/**` pattern — use lowercase) |
+| JWT env | `JWT_ACCESS_SECRET` + `JWT_REFRESH_SECRET` (Base64, 32B+, no fallback — boot fails without them) | `JWT_ACCESS_SECRET` (same value as core's; has a dev fallback — still set it explicitly) |
+| DB | `xpensetrackerdb` | `lendendb` (separate; `userId` is a logical link, no FK) |
+| Error-page dispatch | permitted (real JSON errors) | permitted (same as core) |
+| CORS | none configured | none configured — browser apps must proxy or the backend must add origins |
+
+Canonical frontend auth flow:
+1. `register`/`login` (core) → store `accessToken` (5–30 min) + `refreshToken` (10 d) + `profileComplete`.
+2. If `!profileComplete` → `POST /users/complete-profile` with REAL values (all fields optional in code).
+3. Call core `:8091` and LenDen `:8092` with `Authorization: Bearer <accessToken>`.
+4. On `401/403` → `POST core/auth/refresh` → swap token → retry once → else logout.
+
+---
+
+## 10. Frontend screen map + key flows
 
 | Screen / action | Endpoint(s) |
 |---|---|
-| Login / Register | `POST /api/v1/auth/login`, `POST /api/v1/auth/register` |
-| Complete profile | `POST /api/v1/users/complete-profile` |
-| Load user profile | `GET /api/v1/users/profile` |
-| Dashboard current month | `GET /api/v1/fmonth/current` + `GET /api/v1/fmonth/{id}/detail` |
-| Analytics (any month) | `GET /api/v1/fmonth/by-date?year&month` + `GET /api/v1/fmonth/{id}/detail` |
-| Month history list | `GET /api/v1/fmonth/list` |
-| Month's expenses | `GET /api/v1/fmonth/{id}/expenses` |
-| All-expenses screen | `GET /api/v1/expenses` |
-| Create expense | `POST /api/v1/expenses` |
-| Edit expense | `PUT /api/v1/expenses/{id}` |
-| Delete expense | `DELETE /api/v1/expenses/{id}` |
-| Create month manually | `POST /api/v1/fmonth` |
-| Edit budget | `PATCH /api/v1/fmonth/{id}/budget` |
+| Register / login | `POST core/auth/register`, `POST core/auth/login` |
+| Token refresh (the ONLY one) | `POST core/auth/refresh` |
+| Complete profile | `POST core/users/complete-profile` → `GET core/users/profile` |
+| Dashboard (current month) | `GET core/fmonth/current` → `GET core/fmonth/{id}/detail` |
+| Analytics (any month) | `GET core/fmonth/by-date?year&month` → `GET core/fmonth/{id}/detail` |
+| Month history | `GET core/fmonth/list` (0-based page!) |
+| Month's expenses | `GET core/fmonth/{id}/expenses` (0-based page!) |
+| All expenses | `GET core/expenses` (1-based `currentPage`) |
+| Create expense | `POST core/expenses` |
+| Edit / delete expense | `PUT core/expenses/{id}` (string reply) / `DELETE core/expenses/{id}` (string reply) |
+| Manual month / edit budget | `POST core/fmonth` / `PATCH core/fmonth/{id}/budget` |
+| LenDen people list / add | `GET` / `POST lenden/client` |
+| LenDen person detail / balance / edit / remove | `GET` / `GET lenden/client/{id}/summary` / `PATCH lenden/client/{id}` / `DELETE lenden/client` (UUID in body) |
+| LenDen ledger / add entry | `GET lenden/transaction/all/{clientId}?…` / `POST lenden/transaction/{clientId}` |
+| LenDen entry detail / edit / remove | `GET` / `PATCH` / `DELETE lenden/transaction/{id}` (204, no body) |
 
-### Key flows
-1. **Expense on current month, no month exists yet** → `POST /expenses` auto-creates the month (budget inherited from previous month) and returns 201.
-2. **Expense on a different month, no month exists** → 400 `FMONTH_REQUIRED` with `year`/`month` → show "Create this month?" dialog → `POST /fmonth` → retry `POST /expenses`.
-3. **Current-month budget edit** → `GET /fmonth/current` (get id) → `PATCH /fmonth/{id}/budget`.
-4. **404 on `/fmonth/current` or `/by-date`** = month doesn't exist → treat as zero state (no data), never as a hard error.
+Key flows:
+1. **First expense of the month** → `POST /expenses` auto-creates the month (inherits previous budget) → 201.
+2. **Expense in another month with no record** → 400 `FMONTH_REQUIRED {year,month}` → "Create this month?" dialog → `POST /fmonth {budget, monthlyIncome, year, month}` → retry `POST /expenses`.
+3. **Budget edit** → `GET /fmonth/current` (take `id`) → `PATCH /fmonth/{id}/budget`.
+4. **404 on `/fmonth/current` or `/by-date`** = zero state, not an error screen.
+5. **LenDen balances** = `GET lenden/client/{id}/summary` (`totalSent`, `totalReceived`,
+   `netAmount`, `balanceStatus RECEIVE/GIVE/SETTLED`). Do NOT re-sum transaction pages client-side.
 
 ---
 
-## 8. Gotchas & quirks to remember
+## 11. Gotcha checklist (things that will bite a generated client)
 
-- Error keys are `Message` / `Status` (capitalized) — **except** register duplicate email (`message`, lowercase).
-- Login failure = **404**, not 401.
-- `PUT /expenses/{id}` and `DELETE /expenses/{id}` return plain JSON **strings**, not objects.
-- Custom expense page uses **1-based** `currentPage`; Spring `Page` endpoints use **0-based** `number`/`pageable.pageNumber`.
-- `remaining` can be negative (over budget).
-- `GET /users/profile` and `POST /users` return `UserResponse` (no `password`) — a serialization-safety fix; frontend's `User` type should drop any `password`/`username` expectations.
-- Valid expense categories: `FOOD, TRAVEL, SHOPPING, BILLS, HEALTH, ENTERTAINMENT, EDUCATION, OTHER`.
-- Monthly auto-created budgets inherit the **previous month's budget** (or `0` if none), `monthlyIncome = 0`.
+- Auth fields are `accessToken` + `refreshToken`, never `token`. Access lives minutes — refresh-and-retry.
+- Error keys `Message`/`Status` (capital) — except register-dup (`message`) and the unhandled-shape cases in §1.
+- Login failures are **404**, not 401. Month-not-found on budget/expense-month/detail routes is **409**, not 404.
+- `PUT /expenses/{id}` and `DELETE /expenses/{id}` return bare JSON **strings**. LenDen `DELETE /client`
+  wants a bare UUID **in the body**; LenDen `DELETE /transaction/{id}` returns **204 with no body**.
+- Two pagination dialects: 1-based custom pages (`GET /expenses` → `currentPage`; LenDen `/all` →
+  `currentPage` under the `expenses` key) vs 0-based raw Spring pages (`/fmonth/list`, `/fmonth/{id}/expenses` → `number`).
+- `pageSize` capped at 50 core-side (silent) but UNCAPPED LenDen-side — clamp everywhere to 50.
+- `GET /fmonth/{id}/detail` ignores `pageNo` (only `pageSize` = recent count).
+- Always send `monthlyIncome` (use `0`) on `POST /fmonth`; keep expense `description` ≤ 100 chars.
+- Always send real values to `complete-profile` (empty `{}` still returns 200 and locks the profile "complete").
+- LenDen `TransactionRequest` is unvalidated server-side — validate amount/date/type client-side.
+- LenDen `updateClient` only applies non-null fields; status/alerts are read-only.
+- No CORS on either service — browser builds need a proxy or backend origins configured.
+- Deleting a LenDen client deletes its transactions with no guard — confirm first.

@@ -1,12 +1,12 @@
 package com.KharchaPani.LenDenMicroservice.transaction;
 
-
-import com.KharchaPani.LenDenMicroservice.client.Client;
 import com.KharchaPani.LenDenMicroservice.enums.TransactionType;
-import jakarta.persistence.*;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.mapping.PrimaryKey;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,15 +15,15 @@ import java.util.UUID;
 
 @Getter
 @Setter
-@Entity
-@Table(name = "transactions")
-public class Transaction {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "transaction_id", updatable = false, nullable = false)
+@Builder
+@AllArgsConstructor
+public class TransactionResponse {
+
     private UUID id;
 
     private UUID userId;
+
+    private UUID clientId;
 
     private BigDecimal amount;
 
@@ -33,14 +33,4 @@ public class Transaction {
 
     @Enumerated(EnumType.STRING)
     private TransactionType transactionType;
-
-    @ManyToOne(
-            fetch = FetchType.LAZY
-    )
-    @JoinColumn(
-            name = "clientId",
-            nullable = false
-    )
-    private Client client;
-
 }

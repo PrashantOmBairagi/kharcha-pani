@@ -28,6 +28,7 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        System.out.println(">>>>>> MY CUSTOM SECURITY CONFIG IS LOADING! <<<<<<");
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session
