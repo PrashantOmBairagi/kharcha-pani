@@ -2,6 +2,8 @@ package com.KharchaPani.LenDenMicroservice.security;
 
 import com.KharchaPani.LenDenMicroservice.exception.UnauthorizedException;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,6 +12,7 @@ import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -50,10 +53,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
+            else {
+                writeUnauthorized(response, "Token is Expired");
+                return;
+            }
         }
-        catch (Exception e){
-            throw new UnauthorizedException("Something Wrong with the Authentication");
+        catch (ExpiredJwtException e) {
+            writeUnauthorized(response, "Token is Expired");
+            return;
+        } catch (JwtException | IllegalArgumentException | UsernameNotFoundException e) {
+            writeUnauthorized(response, "Invalid token");
+            return;
         }
         filterChain.doFilter(request,response);
+    }
+
+    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
+        if (response.isCommitted()) {
+            return;
+        }
+        SecurityContextHolder.clearContext();
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json");
+        response.getWriter().write("{\"error\": \"Unauthorized\", \"message\": \"" + message + "\"}");
     }
 }

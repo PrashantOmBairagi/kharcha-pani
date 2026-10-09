@@ -13,12 +13,15 @@ from the controllers, services, DTOs, and exception handlers — not guessed.
 - **Token lifetimes**: access token default **5 min**, tunable per deploy via `JWT_ACCESS_EXPIRATION`
   (300000 ms default; 5–30 min is the supported range). Refresh token default **10 days**
   (`JWT_REFRESH_EXPIRATION: 864000000`). The ONLY refresh endpoint is core's `POST /api/v1/auth/refresh`.
-  Frontend must implement `401/403 → refresh → retry once`.
+  Frontend must implement `401 → refresh → retry once` (auth failures are now always `401`, never `403` —
+  see §1c).
 - **Conventions for this doc**:
   - `Auth` column: `PUBLIC` = no header needed, `JWT` = Bearer required.
   - `UUID` fields are JSON strings. `BigDecimal` money fields are JSON **numbers**. `LocalDate` is
     ISO `yyyy-MM-dd`. `LocalDateTime` (`createdAt`) is ISO date-time.
-  - Error JSON keys are capitalized `Message` / `Status` — EXCEPT the cases called out per endpoint.
+  - Error JSON keys are capitalized `Message` / `Status` — EXCEPT register-dup (`message`) and the
+    access-token/auth 401s in §1c, which use lowercase `{"error","message"}` (written directly by
+    `JwtAuthenticationFilter` / `AuthenticationEntryPoint`, not by `GlobalExceptionHandler`).
 
 ---
 
@@ -51,7 +54,8 @@ All core errors come from `GlobalExceptionHandler`. Frontend must branch on the 
 | Bean validation failure (`@Valid` on body) | 400 | `{ "Message": "<first violation message>", "Status": 400 }` — FIRST message only |
 | Register duplicate email | 400 | `{ "message": "Email already exists! Try Login." }` — lowercase `message`, NOT standard shape |
 | Unauthorized (bad/expired refresh token) | 401 | `{ "Message": "...", "Status": 401 }` |
-| Bad/expired JWT (access token path) | 401 | `{ "Message": "Refresh token expired" }` or `{ "Message": "Invalid refresh token" }`, `Status: 401` |
+| Bad/expired access token (filter path, §1c) | 401 | lowercase `{"error":"Unauthorized","message":"Token is Expired" \| "Invalid token"}` |
+| Missing auth on protected route (entry-point path, §1c) | 401 | lowercase `{"error":"Unauthorized","message":"Authentication required"}` |
 | Phone already taken (complete-profile) | 409 | `{ "Message": "This phone number'...' is already linked to another account.", "Status": 409 }` |
 | FMONTH_REQUIRED (expense in a month with no record) | 400 | `{ "Message": "Financial month required for 2025-7", "year": 2025, "month": 7, "code": "FMONTH_REQUIRED", "Status": 400 }` |
 
@@ -64,13 +68,35 @@ client-side (rules are listed per endpoint below).
 ## 1b. Standard error shapes (LenDen)
 
 LenDen's handler covers 404 (`ResourceNotFound`), 409 (generic `IllegalArgumentException`), and 400
-(first validation message) with the same capitalized `{Message,Status}` keys. Differences from core:
+(first validation message) with the same capitalized `{Message,Status}` keys. Access-token 401s do NOT
+come from that handler — they use the same lowercase `{"error","message"}` shape as core (see §1c),
+written by LenDen's `JwtAuthenticationFilter` / `AuthenticationEntryPoint`. Differences from core:
 
-- There is NO `UnauthorizedException`/`JwtException` handler — 401s (e.g. bad `getCurrentUserId`)
-  do NOT use `{Message,Status}`; handle any 401 generically (refresh-and-retry, then logout).
 - The `FMONTH_REQUIRED` branch is copied into LenDen's handler but never thrown there — ignore it.
 - `pageSize` is NOT capped server-side — keep it ≤ 50 client-side.
 - `pageNo <= 0` hits the generic handler as **409**, not 400 — validate `pageNo >= 1` client-side.
+
+## 1c. Access-token 401s — identical on BOTH services (fixed)
+
+`JwtAuthenticationFilter.writeUnauthorized()` + `SecurityConfig.authenticationEntryPoint()` on core
+(`:8091`) and LenDen (`:8092`) now return the same three lowercase bodies, always HTTP 401
+(`Content-Type: application/json`). Previously an expired access token fell through to Spring's
+default `403`; that no longer happens.
+
+| Situation | HTTP | Body | Frontend action |
+|---|---|---|---|
+| Expired access token (`ExpiredJwtException`) | 401 | `{"error":"Unauthorized","message":"Token is Expired"}` | refresh → retry once |
+| Malformed / wrong-secret / unknown-user token (`JwtException`, `IllegalArgumentException`, `UsernameNotFoundException`) | 401 | `{"error":"Unauthorized","message":"Invalid token"}` | refresh → retry once; if refresh also 401 → logout |
+| No / missing `Authorization` header on a protected route (entry point) | 401 | `{"error":"Unauthorized","message":"Authentication required"}` | refresh if a refresh token exists, else login |
+
+Notes:
+- Core additionally skips the filter via `shouldNotFilter()` for `/api/v1/auth/**`, `/api/v1/public/**`,
+  `/swagger-ui/**`, `/v3/api-docs/**`. LenDen has no public API routes (only swagger patterns) so every
+  `/api/v2/lenden/**` call needs the header.
+- Refresh-token failures keep the OLD capitalized shape from core's `GlobalExceptionHandler`
+  (`{"Message":"Refresh token expired" | "Invalid refresh token","Status":401}`) — branch on HTTP 401
+  first, then on the `message`/`Message` value.
+- `403` is no longer returned for auth failures on either service.
 
 ---
 
@@ -122,7 +148,7 @@ Mints a fresh access token. PUBLIC (no header). **The only refresh endpoint — 
   `{ "Message": "Invalid refresh token", "Status": 401 }` (malformed/wrong-secret).
 - **Response 404:** `{ "Message": "User Not Found or Token is broken", "Status": 404 }`
   (user deleted since login).
-- Frontend: on any API `401/403`, call this once with the stored refresh token, swap the access
+- Frontend: on any API `401` (see §1c for the three bodies), call this once with the stored refresh token, swap the access
   token, retry the original call once. If refresh itself fails → force logout.
 
 ---
@@ -362,7 +388,9 @@ but nothing transitions it — treat as display-only). `clientAlertsActive` is a
 and not editable. No uniqueness on phone/name — duplicates allowed.
 
 ### `GET /api/v2/lenden/client/health` → 200 (JWT REQUIRED)
-Unlike core's public health, this needs the Bearer token (no token → 403). Body `"OK"`.
+Unlike core's public health, this needs the Bearer token. No/missing header → `401`
+`{"error":"Unauthorized","message":"Authentication required"}` (entry point); expired → `401`
+`{"error":"Unauthorized","message":"Token is Expired"}`. Body on success `"OK"`.
 
 ### `POST /api/v2/lenden/client` → 200 (NOT 201)
 ```json
@@ -496,7 +524,10 @@ Canonical frontend auth flow:
 1. `register`/`login` (core) → store `accessToken` (5–30 min) + `refreshToken` (10 d) + `profileComplete`.
 2. If `!profileComplete` → `POST /users/complete-profile` with REAL values (all fields optional in code).
 3. Call core `:8091` and LenDen `:8092` with `Authorization: Bearer <accessToken>`.
-4. On `401/403` → `POST core/auth/refresh` → swap token → retry once → else logout.
+4. On `401` → inspect `message`/`Message` (see §1c): `Token is Expired` / `Invalid token` /
+   `Authentication required` → `POST core/auth/refresh` → swap token → retry once → else logout.
+   Refresh-token failures are capitalized `{Message,Status}`; access-token failures are lowercase
+   `{error,message}` — handle both, branching on status 401 first.
 
 ---
 
@@ -532,8 +563,8 @@ Key flows:
 
 ## 11. Gotcha checklist (things that will bite a generated client)
 
-- Auth fields are `accessToken` + `refreshToken`, never `token`. Access lives minutes — refresh-and-retry.
-- Error keys `Message`/`Status` (capital) — except register-dup (`message`) and the unhandled-shape cases in §1.
+- Auth fields are `accessToken` + `refreshToken`, never `token`. Access lives minutes — refresh-and-retry on **401 only** (see §1c; `403` no longer occurs for auth).
+- Error keys `Message`/`Status` (capital) — except register-dup (`message`) and the §1c access-token/entry-point 401s (`{"error","message"}` lowercase).
 - Login failures are **404**, not 401. Month-not-found on budget/expense-month/detail routes is **409**, not 404.
 - `PUT /expenses/{id}` and `DELETE /expenses/{id}` return bare JSON **strings**. LenDen `DELETE /client`
   wants a bare UUID **in the body**; LenDen `DELETE /transaction/{id}` returns **204 with no body**.
