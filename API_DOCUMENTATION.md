@@ -11,14 +11,16 @@ from the controllers, services, DTOs, and exception handlers — not guessed.
   and send the same `accessToken` to both services (both verify with the same `JWT_ACCESS_SECRET` env value).
   Header on every protected call: `Authorization: Bearer <accessToken>`.
 - **Token lifetimes**: access token default **5 min**, tunable per deploy via `JWT_ACCESS_EXPIRATION`
-  (300000 ms default; 5–30 min is the supported range). Refresh token default **10 days**
+  (300000 ms default; 5–30 min is the recommended range — the value is passed straight to the token's
+  expiry with no bounds check, so it is deploy guidance, not an enforced limit). Refresh token default **10 days**
   (`JWT_REFRESH_EXPIRATION: 864000000`). The ONLY refresh endpoint is core's `POST /api/v1/auth/refresh`.
   Frontend must implement `401 → refresh → retry once` (auth failures are now always `401`, never `403` —
   see §1c).
 - **Conventions for this doc**:
   - `Auth` column: `PUBLIC` = no header needed, `JWT` = Bearer required.
   - `UUID` fields are JSON strings. `BigDecimal` money fields are JSON **numbers**. `LocalDate` is
-    ISO `yyyy-MM-dd`. `LocalDateTime` (`createdAt`) is ISO date-time.
+    ISO `yyyy-MM-dd`. `LocalDateTime` (`createdAt`) is ISO date-time. `Instant` (LenDen
+    `dateAndTime`) is an ISO-8601 **UTC** date-time, e.g. `2026-10-06T10:30:00Z`.
   - Error JSON keys are capitalized `Message` / `Status` — EXCEPT register-dup (`message`) and the
     access-token/auth 401s in §1c, which use lowercase `{"error","message"}` (written directly by
     `JwtAuthenticationFilter` / `AuthenticationEntryPoint`, not by `GlobalExceptionHandler`).
@@ -37,6 +39,7 @@ from the controllers, services, DTOs, and exception handlers — not guessed.
 | Borrow/lend clients CRUD | LenDen | `:8092/api/v2/lenden/client` |
 | Borrow/lend transactions CRUD | LenDen | `:8092/api/v2/lenden/transaction` |
 | LenDen health (**auth required**, unlike core) | LenDen | `:8092/api/v2/lenden/client/health` |
+| Actuator health (**JWT required** on both) | core + LenDen | `:8091/actuator/health`, `:8092/actuator/health` |
 
 There is NO `POST /api/v1/users` endpoint (older drafts of this doc listed one — it does not exist
 in `UserController`). The user flow is `register → complete-profile → profile`.
@@ -57,7 +60,8 @@ All core errors come from `GlobalExceptionHandler`. Frontend must branch on the 
 | Bad/expired access token (filter path, §1c) | 401 | lowercase `{"error":"Unauthorized","message":"Token is Expired" \| "Invalid token"}` |
 | Missing auth on protected route (entry-point path, §1c) | 401 | lowercase `{"error":"Unauthorized","message":"Authentication required"}` |
 | Phone already taken (complete-profile) | 409 | `{ "Message": "This phone number'...' is already linked to another account.", "Status": 409 }` |
-| FMONTH_REQUIRED (expense in a month with no record) | 400 | `{ "Message": "Financial month required for 2025-7", "year": 2025, "month": 7, "code": "FMONTH_REQUIRED", "Status": 400 }` |
+| Other DB constraint conflict (e.g. duplicate email/phone race) | 409 | `{ "Message": "Entered Details already exists for Other User.", "Status": 409 }` |
+| FMONTH_REQUIRED (expense dated outside the current month, no `financialMonthId`) | 400 | `{ "Message": "Financial month required for 2025-7", "year": 2025, "month": 7, "code": "FMONTH_REQUIRED", "Status": 400 }` |
 
 Shapes NOT covered by the handler (frontend sees Spring's default
 `{timestamp,status,error,path}` instead of `{Message,Status}`):
@@ -145,7 +149,9 @@ Mints a fresh access token. PUBLIC (no header). **The only refresh endpoint — 
 - **Request** `RefreshTokenRequest`: `{ "refreshToken": "<jwt-refresh>" }` (required, `@NotBlank`).
 - **Response 200** `RefreshResponse`: `{ "accessToken": "<new-jwt-access>" }`
 - **Response 401:** `{ "Message": "Refresh token expired", "Status": 401 }` (expired) or
-  `{ "Message": "Invalid refresh token", "Status": 401 }` (malformed/wrong-secret).
+  `{ "Message": "Invalid refresh token", "Status": 401 }` (malformed/wrong-secret). The service also
+  has a third branch `{"Message":"Invalid or expired refresh token","Status":401}`, but it is
+  unreachable (an expired token throws during parsing first) — expect the two bodies above.
 - **Response 404:** `{ "Message": "User Not Found or Token is broken", "Status": 404 }`
   (user deleted since login).
 - Frontend: on any API `401` (see §1c for the three bodies), call this once with the stored refresh token, swap the access
@@ -156,7 +162,8 @@ Mints a fresh access token. PUBLIC (no header). **The only refresh endpoint — 
 ## 3. Public — `GET :8091/api/v1/public/*` (PUBLIC)
 
 ### `GET /api/v1/public/health`
-- **Auth:** PUBLIC. **Response 200:** plain body `"OK"` (JSON string). Use for uptime checks.
+- **Auth:** PUBLIC. **Response 200:** `Content-Type: text/plain`, body `OK` (**unquoted** plain text,
+  not a JSON string). Use for uptime checks.
 
 ### `GET /api/v1/public/info`
 - **Auth:** PUBLIC. **Response 200:**
@@ -239,10 +246,14 @@ Valid `category` values: `FOOD, TRAVEL, SHOPPING, BILLS, HEALTH, ENTERTAINMENT, 
 }
 ```
 - Behavior: with `financialMonthId`, it must belong to the caller (else **409**). Without it, the
-  server uses the month of `expenseDate`: current month → **auto-created** (budget = previous month's
-  budget or `0`, `monthlyIncome = 0`); any other month without a record → **400 FMONTH_REQUIRED**
-  `{Message,year,month,code,Status}` (see §1) — show the "Create this month?" dialog, then
-  `POST /fmonth {budget, monthlyIncome, year, month}` with the returned year/month, then retry.
+  server only auto-resolves the **current calendar month** (→ **auto-created**, budget = previous
+  month's budget or `0`, `monthlyIncome = 0`). **Any other month → 400 FMONTH_REQUIRED**
+  `{Message,year,month,code,Status}` (see §1) — and this fires **regardless of whether a record for
+  that month already exists**; this path never looks up past months.
+  - Recovery: call `GET /fmonth/by-date?year&month`. If it returns **200**, take its `id` and resend
+    the expense **with `financialMonthId`**. If it returns **404** (no record yet), show the
+    "Create this month?" dialog → `POST /fmonth {budget, monthlyIncome, year, month}` → retry the
+    expense. (Simply retrying after `POST /fmonth` is not enough — see §10 flow 2.)
 - **Response 201** — `ExpenseResponse`.
 
 ### `GET /api/v1/expenses` → 200 (custom 1-based page)
@@ -267,17 +278,18 @@ Valid `category` values: `FOOD, TRAVEL, SHOPPING, BILLS, HEALTH, ENTERTAINMENT, 
 ### `GET /api/v1/expenses/{id}` → 200 | 404 `{Message:"Expense not found",Status:404}`
 Foreign ids also 404 (ownership-checked, safe to treat as "not found").
 
-### `PUT /api/v1/expenses/{id}` → 200 plain string (NOT an object)
+### `PUT /api/v1/expenses/{id}` → 200 plain text (NOT an object)
 - **Request** `ExpenseUpdateRequest` — same rules as create EXCEPT: `description` capped at 100
   chars, and `financialMonthId` is NOT accepted (unknown-property → 400):
 ```json
 { "description": "Updated chai", "category": "FOOD", "amount": 50.00, "expenseDate": "2026-10-06" }
 ```
-- **Response 200 body:** `"Expense Updated Successfully"` (a JSON string). **404** if missing/foreign.
+- **Response 200 body:** `Expense Updated Successfully` — `Content-Type: text/plain`, **unquoted**
+  plain text (NOT a JSON string). **404** if missing/foreign.
 - Note: updating `expenseDate` across months does NOT move the expense to another month — keep edits
   within the same month or delete + recreate.
 
-### `DELETE /api/v1/expenses/{id}` → 200 plain string `"Expense deleted"` | 404.
+### `DELETE /api/v1/expenses/{id}` → 200 plain text `Expense deleted` (**unquoted**) | 404.
 
 ---
 
@@ -390,7 +402,7 @@ and not editable. No uniqueness on phone/name — duplicates allowed.
 ### `GET /api/v2/lenden/client/health` → 200 (JWT REQUIRED)
 Unlike core's public health, this needs the Bearer token. No/missing header → `401`
 `{"error":"Unauthorized","message":"Authentication required"}` (entry point); expired → `401`
-`{"error":"Unauthorized","message":"Token is Expired"}`. Body on success `"OK"`.
+`{"error":"Unauthorized","message":"Token is Expired"}`. Body on success `OK` (`text/plain`, **unquoted**).
 
 ### `POST /api/v2/lenden/client` → 200 (NOT 201)
 ```json
@@ -441,14 +453,15 @@ Per-client ledger balance, computed server-side in one aggregate query (no store
   "nextSettlementDate": "2026-11-01"
 }
 ```
-Same length/pattern rules as create. `clientStatus`/`clientAlertsActive` cannot be changed here.
+Same length/pattern rules as create **except `clientFirstName`: on update it is `@Size(max = 20)`
+with no minimum** (create requires 3–20). `clientStatus`/`clientAlertsActive` cannot be changed here.
 
-### `DELETE /api/v2/lenden/client` → 200 `"Client deleted"` | 404
+### `DELETE /api/v2/lenden/client` → 200 `Client deleted` (plain text) | 404
 Takes the **raw UUID as a JSON string in the request BODY** (no path id):
 ```json
 "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 ```
-Response is the plain string `"Client deleted"`. 404 if missing/foreign.
+Response is the unquoted plain text `Client deleted` (`text/plain`). 404 if missing/foreign.
 WARNING: deleting a client cascade-deletes ALL its transactions (no balance guard) — confirm in UI.
 
 ---
@@ -462,20 +475,22 @@ Shared type `TransactionResponse`:
   "userId": "<uuid>",
   "clientId": "<uuid>",
   "amount": 1500.00,
-  "dateAndTime": "2026-10-06",
+  "dateAndTime": "2026-10-06T10:30:00Z",
   "description": "Lent for books",
   "transactionType": "SENT"
 }
 ```
-`transactionType`: `RECEIVED, SENT`. `dateAndTime` is a `LocalDate` (date only, despite the name).
+`transactionType`: `RECEIVED, SENT`. `dateAndTime` is a `java.time.Instant` — an ISO-8601 **UTC
+date-time** string on the wire (e.g. `"2026-10-06T10:30:00Z"`), NOT a date-only value.
 `TransactionRequest` has NO validation and the controller has no `@Valid` — the frontend MUST validate:
-`amount` present (send positive), `dateAndTime` present, `transactionType` present. Nulls persist and
-break later math.
+`amount` present (send positive), `dateAndTime` present **as a full ISO-8601 instant
+(`2026-10-06T10:30:00Z`) — a bare `2026-10-06` is rejected with 400 before it reaches the service**,
+`transactionType` present. Nulls persist and break later math.
 
 ### `POST /api/v2/lenden/transaction/{clientId}` → 201
 `clientId` comes from the **PATH** — a `clientId` field inside the JSON body (if sent) is IGNORED:
 ```json
-{ "amount": 1500.00, "dateAndTime": "2026-10-06", "description": "Lent for books", "transactionType": "SENT" }
+{ "amount": 1500.00, "dateAndTime": "2026-10-06T10:30:00Z", "description": "Lent for books", "transactionType": "SENT" }
 ```
 Foreign/unknown `clientId` → **404** `{ "Message": "Client not found", "Status": 404 }`
 (ownership-checked — writing into another user's client is impossible).
@@ -514,6 +529,7 @@ The list key is literally `"expenses"` (copy-paste from core) — parse it as th
 |---|---|---|
 | Login / register / refresh | `POST /api/v1/auth/*` | none — reuse core token |
 | Health | `GET /api/v1/public/health` PUBLIC | `GET /api/v2/lenden/client/health` JWT required |
+| Actuator health | `GET /actuator/health` JWT required | `GET /actuator/health` JWT required (only `health` is exposed by default) |
 | Swagger | `:8091/swagger-ui.html`, `/v3/api-docs` PUBLIC | same paths permitted (+ a dead `/Swagger/**` pattern — use lowercase) |
 | JWT env | `JWT_ACCESS_SECRET` + `JWT_REFRESH_SECRET` (Base64, 32B+, no fallback — boot fails without them) | `JWT_ACCESS_SECRET` (same value as core's; has a dev fallback — still set it explicitly) |
 | DB | `xpensetrackerdb` | `lendendb` (separate; `userId` is a logical link, no FK) |
@@ -553,7 +569,7 @@ Canonical frontend auth flow:
 
 Key flows:
 1. **First expense of the month** → `POST /expenses` auto-creates the month (inherits previous budget) → 201.
-2. **Expense in another month with no record** → 400 `FMONTH_REQUIRED {year,month}` → "Create this month?" dialog → `POST /fmonth {budget, monthlyIncome, year, month}` → retry `POST /expenses`.
+2. **Expense in a non-current month** → 400 `FMONTH_REQUIRED {year,month}` (fires even if that month's record already exists) → `GET /fmonth/by-date?year&month`: **200** → retry `POST /expenses` with its `financialMonthId`; **404** → "Create this month?" dialog → `POST /fmonth {budget, monthlyIncome, year, month}` → retry `POST /expenses`.
 3. **Budget edit** → `GET /fmonth/current` (take `id`) → `PATCH /fmonth/{id}/budget`.
 4. **404 on `/fmonth/current` or `/by-date`** = zero state, not an error screen.
 5. **LenDen balances** = `GET lenden/client/{id}/summary` (`totalSent`, `totalReceived`,
@@ -566,8 +582,9 @@ Key flows:
 - Auth fields are `accessToken` + `refreshToken`, never `token`. Access lives minutes — refresh-and-retry on **401 only** (see §1c; `403` no longer occurs for auth).
 - Error keys `Message`/`Status` (capital) — except register-dup (`message`) and the §1c access-token/entry-point 401s (`{"error","message"}` lowercase).
 - Login failures are **404**, not 401. Month-not-found on budget/expense-month/detail routes is **409**, not 404.
-- `PUT /expenses/{id}` and `DELETE /expenses/{id}` return bare JSON **strings**. LenDen `DELETE /client`
-  wants a bare UUID **in the body**; LenDen `DELETE /transaction/{id}` returns **204 with no body**.
+- `PUT /expenses/{id}` and `DELETE /expenses/{id}` return bare **plain-text** bodies (`text/plain`,
+  **unquoted** — not JSON strings). LenDen `DELETE /client` wants a bare UUID **in the body**; LenDen
+  `DELETE /transaction/{id}` returns **204 with no body**.
 - Two pagination dialects: 1-based custom pages (`GET /expenses` → `currentPage`; LenDen `/all` →
   `currentPage` under the `expenses` key) vs 0-based raw Spring pages (`/fmonth/list`, `/fmonth/{id}/expenses` → `number`).
 - `pageSize` capped at 50 core-side (silent) but UNCAPPED LenDen-side — clamp everywhere to 50.
@@ -578,3 +595,7 @@ Key flows:
 - LenDen `updateClient` only applies non-null fields; status/alerts are read-only.
 - No CORS on either service — browser builds need a proxy or backend origins configured.
 - Deleting a LenDen client deletes its transactions with no guard — confirm first.
+- LenDen `dateAndTime` is an `Instant`: send and expect an ISO-8601 UTC date-time
+  (`2026-10-06T10:30:00Z`). A bare `2026-10-06` is a **400**.
+- Both services additionally expose `GET /actuator/health` (**JWT required**) — it is not the same as
+  the two documented health routes and is easy to miss.
