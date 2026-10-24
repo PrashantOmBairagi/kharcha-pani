@@ -17,7 +17,7 @@ import java.util.function.Function;
 @Service
 public class AuthService {
 
-    @Value("${JWT_ACCESS_SECRET}")
+    @Value("${jwt.accessSecret}")
     private String accessSecret;
 
     private SecretKey getSecretKey() {

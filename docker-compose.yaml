@@ -1,0 +1,29 @@
+services:
+  core-service:
+    build:
+      context: ./core-services
+      dockerfile: Dockerfile
+    container_name: spring-core-service
+    ports:
+      - "8091:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - spring-network
+
+  lenden-service:
+    build:
+      context: ./lenden-services
+      dockerfile: Dockerfile
+    container_name: spring-lenden-service
+    ports:
+      - "8092:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - spring-network
+
+networks:
+  spring-network:
+    driver: bridge
+ # If core-service needs to talk to lenden-service internally, it can use http://lenden-service:8080

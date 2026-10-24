@@ -161,7 +161,7 @@ A financial month contains:
 
 ## 🤝 Borrow / Lend Ledger (LenDen-services)
 
-A second microservice (`LenDen-services`, `:8092`, own `lendendb` database) that tracks money lent to / borrowed from people — separate from monthly expenses.
+A second microservice (`lenden-services`, `:8092`, own `lendendb` database) that tracks money lent to / borrowed from people — separate from monthly expenses.
 
 * **Clients** — people you lend to / borrow from (name, phone, notes, next settlement date)
 * **Transactions** — `SENT` (I gave money) / `RECEIVED` (he paid back), amounts, timestamps (`Instant`), descriptions
@@ -173,7 +173,7 @@ A second microservice (`LenDen-services`, `:8092`, own `lendendb` database) that
 
 ## 📡 REST API
 
-> Ports: `core-services` → `http://localhost:8091`, `LenDen-services` → `http://localhost:8092`. Full contract: [`API_DOCUMENTATION.md`](./API_DOCUMENTATION.md).
+> Ports: `core-services` → `http://localhost:8091`, `lenden-services` → `http://localhost:8092`. Full contract: [`API_DOCUMENTATION.md`](./API_DOCUMENTATION.md).
 
 ### Authentication (core `:8091`)
 ```http
@@ -517,7 +517,7 @@ This allows the backend to scale better as a user's expense history grows.
 
 # 🐳 Docker
 
-The backend is containerized using Docker (`core-services/Dockerfile`; `LenDen-services` has no Dockerfile yet and runs locally on `:8092`).
+The backend is containerized using Docker (`core-services/Dockerfile`; `lenden-services` has no Dockerfile yet and runs locally on `:8092`).
 
 ### Build
 
