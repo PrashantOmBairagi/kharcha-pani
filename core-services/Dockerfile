@@ -35,7 +35,7 @@ WORKDIR /app
 # Pull only the built JAR from the builder stage
 COPY --from=builder /app/target/*.jar app.jar
 
-# Railway automatically injects PORT env var; Spring Boot listens on 8080
+#Spring Boot listens on 8080
 EXPOSE 8080
 
 # Run the application

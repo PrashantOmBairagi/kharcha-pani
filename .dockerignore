@@ -1,5 +1,10 @@
 # Maven build output — already compiled in Docker, don't send to build context
 target/
+
+# Docker files themselves
+.docker-compose
+.dockerignore
+
 # screenshots are only for readme file.
 screenshots/
 

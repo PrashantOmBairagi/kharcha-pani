@@ -3,6 +3,8 @@ package com.prashant.kharchapaniapplication.security;
 import com.prashant.kharchapaniapplication.user.User;
 import com.prashant.kharchapaniapplication.user.UserRepository;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +29,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
     @Value("${jwt.accessSecret}")
     private String jwtAccessSecret;
+
+    @Override
+    protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+        String path = request.getServletPath();
+        return path.startsWith("/api/v1/auth")
+                || path.startsWith("/api/v1/public")
+                || path.startsWith("/swagger-ui")
+                || path.startsWith("/v3/api-docs");
+    }
 
     @Override
     protected void doFilterInternal(
@@ -60,11 +71,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
+                else {
+                    writeUnauthorized(response, "Token is Expired");
+                    return;
+                }
             }
-        } catch (Exception e) {
-            // Log or ignore corrupted tokens
-            e.printStackTrace();
+        } catch (ExpiredJwtException e) {
+            writeUnauthorized(response, "Token is Expired");
+            return;
+        } catch (JwtException | IllegalArgumentException | UsernameNotFoundException e) {
+            writeUnauthorized(response, "Invalid token");
+            return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
+        if (response.isCommitted()) {
+            return;
+        }
+        SecurityContextHolder.clearContext();
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json");
+        response.getWriter().write("{\"error\": \"Unauthorized\", \"message\": \"" + message + "\"}");
     }
 }
