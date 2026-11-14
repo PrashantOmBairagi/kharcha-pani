@@ -19,12 +19,11 @@ public class PublicController {
     public Map<String, String> info() {
         return Map.of(
                 "application", "KHARCHA PANI - India's new finance buddy",
-                "version", "v3.0.0",
-                "status", "PROD-ACTIVE",
-                "Host", "Amazon Elastic Compute @amazonLinux",
+                "version", "v3.0",
+                "status", "DEV-ACTIVE",
                 "timestamp", String.valueOf(new Date(System.currentTimeMillis())),
                 "Author","Prashant Bairagi",
-                "Portfolio","https://prashantbairagi.tech"
+                "Portfolio","https://prashant-bairagi-portfolio.vercel.app"
         );
     }
 }
