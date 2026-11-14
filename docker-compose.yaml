@@ -6,6 +6,8 @@ services:
     container_name: spring-core-service
     ports:
       - "8091:8080"
+    env_file:
+      - C:/Users/bairagi/OneDrive/Desktop/Nginx/.env-core
     environment:
       - SPRING_PROFILES_ACTIVE=docker
     networks:
@@ -18,6 +20,8 @@ services:
     container_name: spring-lenden-service
     ports:
       - "8092:8080"
+    env_file:
+      - C:/Users/bairagi/OneDrive/Desktop/Nginx/.env-lenden
     environment:
       - SPRING_PROFILES_ACTIVE=docker
     networks:
